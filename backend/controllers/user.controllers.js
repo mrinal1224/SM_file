@@ -140,6 +140,18 @@ export const getUserProfile = async (req, res) => {
     }
 };
 
+export const testFileUpload = async (req, res) => {
+    return res.status(200).json({
+        message: "File received successfully",
+        file: {
+            fieldname: req.file?.fieldname,
+            originalname: req.file?.originalname,
+            mimetype: req.file?.mimetype,
+            size: req.file?.size
+        }
+    });
+};
+
 export const followUser = async (req, res) => {
     try {
         const currentUserId = req.user._id;
