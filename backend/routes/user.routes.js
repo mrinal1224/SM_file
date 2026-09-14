@@ -7,8 +7,7 @@ import {
     getUserProfile,
     updateProfile,
     followUser,
-    unfollowUser,
-    testFileUpload
+    unfollowUser
 } from "../controllers/user.controllers.js";
 import isAuthenticated from "../middlewares/authMiddleware.js";
 import upload from "../middlewares/upload.middleware.js";
@@ -28,15 +27,6 @@ userRoutes.put(
     updateProfile
 );
 
-// Temporary Multer + Cloudinary test route
-userRoutes.post(
-    "/test-upload",
-    isAuthenticated,
-    upload.single("profileImage"),
-    testFileUpload
-);
-
-// Following and followers
 userRoutes.post("/:id/follow", isAuthenticated, followUser);
 userRoutes.delete("/:id/follow", isAuthenticated, unfollowUser);
 
