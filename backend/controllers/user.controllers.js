@@ -1,6 +1,7 @@
 import User from "../models/user.model.js";
 import bcrypt from "bcrypt";
 import generateToken from "../utils/generateToken.js";
+import uploadToCloudinary from "../utils/uploadToCloudinary.js";
 
 const cookieOptions = {
     httpOnly: true,
@@ -122,7 +123,6 @@ export const getUserProfile = async (req, res) => {
 
         const userData = await User.findOne({ username })
             .select("-password")
-            // tom - 456
             .populate("followers", "name username profileImage")
             .populate("followings", "name username profileImage");
 
@@ -140,16 +140,31 @@ export const getUserProfile = async (req, res) => {
     }
 };
 
-export const testFileUpload = async (req, res) => {
-    return res.status(200).json({
-        message: "File received successfully",
-        file: {
-            fieldname: req.file?.fieldname,
-            originalname: req.file?.originalname,
-            mimetype: req.file?.mimetype,
-            size: req.file?.size
+export const testFileUpload = async (req, res, next) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded" });
         }
-    });
+
+        const result = await uploadToCloudinary(req.file.buffer);
+
+        return res.status(200).json({
+            message: "File uploaded to Cloudinary successfully",
+            file: {
+                fieldname: req.file.fieldname,
+                originalname: req.file.originalname,
+                mimetype: req.file.mimetype,
+                size: req.file.size
+            },
+            cloudinary: {
+                publicId: result.public_id,
+                secureUrl: result.secure_url,
+                resourceType: result.resource_type
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
 };
 
 export const followUser = async (req, res) => {
