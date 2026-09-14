@@ -5,6 +5,7 @@ import {
     logoutUser,
     getMe,
     getUserProfile,
+    updateProfile,
     followUser,
     unfollowUser,
     testFileUpload
@@ -20,7 +21,14 @@ userRoutes.post("/logout", isAuthenticated, logoutUser);
 userRoutes.get("/me", isAuthenticated, getMe);
 userRoutes.get("/profile/:username", isAuthenticated, getUserProfile);
 
-// Temporary Multer test route
+userRoutes.put(
+    "/profile",
+    isAuthenticated,
+    upload.single("profileImage"),
+    updateProfile
+);
+
+// Temporary Multer + Cloudinary test route
 userRoutes.post(
     "/test-upload",
     isAuthenticated,
