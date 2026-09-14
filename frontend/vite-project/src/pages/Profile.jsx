@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 
 function Profile() {
     const { username } = useParams()
-    const { user: loggedInUser } = useAuth()
+    const { user: loggedInUser, setUser } = useAuth()
     const [userData, setUserData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [isFollowing, setIsFollowing] = useState(false)
@@ -14,6 +14,7 @@ function Profile() {
     const [editForm, setEditForm] = useState({ name: '', username: '', email: '', bio: '' })
     const [selectedImage, setSelectedImage] = useState(null)
     const [previewImage, setPreviewImage] = useState('')
+    const [editLoading, setEditLoading] = useState(false)
 
     const isOwnProfile = loggedInUser?.username === username
 
@@ -84,6 +85,12 @@ function Profile() {
         setIsEditOpen(true)
     }
 
+    const closeEditProfile = () => {
+        setIsEditOpen(false)
+        setSelectedImage(null)
+        setPreviewImage('')
+    }
+
     const handleEditChange = (event) => {
         const { name, value } = event.target
         setEditForm((prev) => ({ ...prev, [name]: value }))
@@ -99,14 +106,43 @@ function Profile() {
         setPreviewImage(previewUrl)
     }
 
-    const handleEditSubmit = (event) => {
+    const handleEditSubmit = async (event) => {
         event.preventDefault()
-        setUserData((prev) => ({
-            ...prev,
-            ...editForm,
-            profileImage: previewImage || prev.profileImage
-        }))
-        setIsEditOpen(false)
+
+        try {
+            setEditLoading(true)
+
+            const formData = new FormData()
+            formData.append('name', editForm.name)
+            formData.append('username', editForm.username)
+            formData.append('email', editForm.email)
+            formData.append('bio', editForm.bio)
+
+            if (selectedImage) {
+                formData.append('profileImage', selectedImage)
+            }
+
+            const response = await axiosInstance.put('/users/profile', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            })
+
+            const updatedUser = response.data.user
+            setUserData((prev) => ({ ...prev, ...updatedUser }))
+            setUser(updatedUser)
+            closeEditProfile()
+
+            if (updatedUser.username !== username) {
+                window.history.replaceState(null, '', `/profile/${updatedUser.username}`)
+                window.location.reload()
+            }
+        } catch (error) {
+            console.error("Profile update failed:", error)
+            alert(error.response?.data?.message || "Failed to update profile")
+        } finally {
+            setEditLoading(false)
+        }
     }
 
     if (loading) {
@@ -228,7 +264,7 @@ function Profile() {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setIsEditOpen(false)}
+                                onClick={closeEditProfile}
                                 className="text-gray-400 hover:text-gray-700 text-2xl leading-none"
                                 aria-label="Close edit profile"
                             >
@@ -256,72 +292,39 @@ function Profile() {
                                             />
                                         </label>
                                         {selectedImage && (
-                                            <p className="mt-2 max-w-xs truncate text-xs text-gray-500">
-                                                {selectedImage.name}
-                                            </p>
+                                            <p className="mt-2 max-w-xs truncate text-xs text-gray-500">{selectedImage.name}</p>
                                         )}
-                                        <p className="mt-1 text-xs text-gray-400">Image upload is UI-only for now.</p>
+                                        <p className="mt-1 text-xs text-gray-400">Max 5 MB</p>
                                     </div>
                                 </div>
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                                <input
-                                    type="text"
-                                    name="name"
-                                    value={editForm.name}
-                                    onChange={handleEditChange}
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                />
+                                <input type="text" name="name" value={editForm.name} onChange={handleEditChange} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                                <input
-                                    type="text"
-                                    name="username"
-                                    value={editForm.username}
-                                    onChange={handleEditChange}
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                />
+                                <input type="text" name="username" value={editForm.username} onChange={handleEditChange} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                <input
-                                    type="email"
-                                    name="email"
-                                    value={editForm.email}
-                                    onChange={handleEditChange}
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                />
+                                <input type="email" name="email" value={editForm.email} onChange={handleEditChange} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                                <textarea
-                                    name="bio"
-                                    value={editForm.bio}
-                                    onChange={handleEditChange}
-                                    rows="4"
-                                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                                />
+                                <textarea name="bio" value={editForm.bio} onChange={handleEditChange} rows="4" className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
                             </div>
 
                             <div className="flex justify-end gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsEditOpen(false)}
-                                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                >
+                                <button type="button" onClick={closeEditProfile} disabled={editLoading} className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                                     Cancel
                                 </button>
-                                <button
-                                    type="submit"
-                                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
-                                >
-                                    Save Changes
+                                <button type="submit" disabled={editLoading} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+                                    {editLoading ? 'Saving...' : 'Save Changes'}
                                 </button>
                             </div>
                         </form>
