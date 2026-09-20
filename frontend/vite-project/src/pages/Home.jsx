@@ -27,12 +27,18 @@ function Home() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createType, setCreateType] = useState("post");
+  const [reelCaption, setReelCaption] = useState("");
+  const [selectedReel, setSelectedReel] = useState(null);
+  const [reelPreview, setReelPreview] = useState("");
+  const [reelLoading, setReelLoading] = useState(false);
   const [caption, setCaption] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
   const [previewImage, setPreviewImage] = useState("");
   const [postError, setPostError] = useState("");
   const [postLoading, setPostLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const reelInputRef = useRef(null);
 
   const loadFeed = async () => {
     try {
@@ -58,23 +64,45 @@ function Home() {
     navigate("/login", { replace: true });
   };
 
+  const resetReelState = () => {
+    if (reelPreview) URL.revokeObjectURL(reelPreview);
+    setReelCaption("");
+    setSelectedReel(null);
+    setReelPreview("");
+  };
+
   const openCreatePost = () => {
+    resetReelState();
     setCaption("");
     setSelectedImage(null);
     setPreviewImage("");
     setPostError("");
+    setCreateType("post");
+    setIsCreateOpen(true);
+  };
+
+  const openCreateReel = () => {
+    setCaption("");
+    setSelectedImage(null);
+    setPreviewImage("");
+    setPostError("");
+    resetReelState();
+    setCreateType("reel");
     setIsCreateOpen(true);
   };
 
   const closeCreatePost = () => {
     if (postLoading) return;
     setIsCreateOpen(false);
+    setCreateType("post");
     setCaption("");
     setSelectedImage(null);
     setPostError("");
     if (previewImage) URL.revokeObjectURL(previewImage);
     setPreviewImage("");
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (reelInputRef.current) reelInputRef.current.value = "";
+    resetReelState();
   };
 
   const handleImageChange = (event) => {
@@ -98,6 +126,62 @@ function Home() {
 
     if (previewImage) URL.revokeObjectURL(previewImage);
     setPreviewImage(URL.createObjectURL(file));
+  };
+
+  const handleReelChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("video/")) {
+      setPostError("Please select a valid video file.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      setPostError("Reel must be 50MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    setPostError("");
+    setSelectedReel(file);
+
+    if (reelPreview) URL.revokeObjectURL(reelPreview);
+    setReelPreview(URL.createObjectURL(file));
+  };
+
+  const handleCreateReel = async (event) => {
+    event.preventDefault();
+    setPostError("");
+
+    if (!selectedReel) {
+      setPostError("Select a video to upload.");
+      return;
+    }
+
+    try {
+      setReelLoading(true);
+
+      const formData = new FormData();
+      formData.append("caption", reelCaption.trim());
+      formData.append("video", selectedReel);
+
+      await axiosInstance.post("/reels", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data"
+        }
+      });
+
+      closeCreatePost();
+    } catch (error) {
+      console.error("Create reel failed:", error);
+      setPostError(
+        error.response?.data?.message || "Unable to upload reel. Please try again."
+      );
+    } finally {
+      setReelLoading(false);
+    }
   };
 
   const handleCreatePost = async (event) => {
@@ -238,6 +322,7 @@ function Home() {
             </div>
             <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
               <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▧ Photo</button>
+              <button onClick={openCreateReel} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▶ Reel</button>
               <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">☻ Feeling</button>
               <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">⌖ Check in</button>
             </div>
@@ -330,13 +415,15 @@ function Home() {
           <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
-                <h2 className="text-lg font-black">Create Post</h2>
-                <p className="mt-1 text-xs text-slate-500">Share something with your circle.</p>
+                <h2 className="text-lg font-black">{createType === "reel" ? "Create Reel" : "Create Post"}</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {createType === "reel" ? "Share a short video with your circle." : "Share something with your circle."}
+                </p>
               </div>
-              <button onClick={closeCreatePost} disabled={postLoading} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50">✕</button>
+              <button onClick={closeCreatePost} disabled={postLoading || reelLoading} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50">✕</button>
             </div>
 
-            <form onSubmit={handleCreatePost} className="space-y-5 p-6">
+            <form onSubmit={createType === "reel" ? handleCreateReel : handleCreatePost} className="space-y-5 p-6">
               <div className="flex items-center gap-3">
                 <Avatar initials={getInitials(user?.name)} tone="from-indigo-500 to-violet-500" />
                 <div>
@@ -349,51 +436,94 @@ function Home() {
                 <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{postError}</div>
               )}
 
-              <textarea
-                value={caption}
-                onChange={(event) => setCaption(event.target.value)}
-                maxLength={500}
-                rows={5}
-                placeholder="What's happening?"
-                className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-              />
+              {createType === "reel" ? (
+                <>
+                  <textarea
+                    value={reelCaption}
+                    onChange={(event) => setReelCaption(event.target.value)}
+                    maxLength={300}
+                    rows={3}
+                    placeholder="Write a caption for your reel..."
+                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                  />
 
-              {previewImage && (
-                <div className="relative overflow-hidden rounded-2xl border border-slate-200">
-                  <img src={previewImage} alt="Post preview" className="max-h-80 w-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (previewImage) URL.revokeObjectURL(previewImage);
-                      setPreviewImage("");
-                      setSelectedImage(null);
-                      if (fileInputRef.current) fileInputRef.current.value = "";
-                    }}
-                    className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white"
-                  >
-                    Remove
-                  </button>
-                </div>
+                  {reelPreview && (
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-black">
+                      <video src={reelPreview} controls className="max-h-80 w-full object-contain" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (reelPreview) URL.revokeObjectURL(reelPreview);
+                          setReelPreview("");
+                          setSelectedReel(null);
+                          if (reelInputRef.current) reelInputRef.current.value = "";
+                        }}
+                        className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  <label className="inline-flex cursor-pointer rounded-2xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">
+                    ▶ Add Reel
+                    <input ref={reelInputRef} type="file" accept="video/*" onChange={handleReelChange} className="hidden" />
+                  </label>
+
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>Video up to 50MB</span>
+                    <span>{reelCaption.length}/300</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <textarea
+                    value={caption}
+                    onChange={(event) => setCaption(event.target.value)}
+                    maxLength={500}
+                    rows={5}
+                    placeholder="What's happening?"
+                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                  />
+
+                  {previewImage && (
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200">
+                      <img src={previewImage} alt="Post preview" className="max-h-80 w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (previewImage) URL.revokeObjectURL(previewImage);
+                          setPreviewImage("");
+                          setSelectedImage(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+                    <label className="cursor-pointer rounded-2xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">
+                      ▧ Add Photo
+                      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    </label>
+                    <span className="text-xs text-slate-400">{caption.length}/500</span>
+                  </div>
+                </>
               )}
 
-              <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                <label className="cursor-pointer rounded-2xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">
-                  ▧ Add Photo
-                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                </label>
-                <span className="text-xs text-slate-400">{caption.length}/500</span>
-              </div>
-
               <div className="flex justify-end gap-3">
-                <button type="button" onClick={closeCreatePost} disabled={postLoading} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-                <button type="submit" disabled={postLoading} className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
-                  {postLoading ? "Publishing..." : "Publish Post"}
+                <button type="button" onClick={closeCreatePost} disabled={postLoading || reelLoading} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={postLoading || reelLoading} className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {postLoading || reelLoading ? "Publishing..." : createType === "reel" ? "Publish Reel" : "Publish Post"}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}
+      )}}
     </div>
   );
 }
