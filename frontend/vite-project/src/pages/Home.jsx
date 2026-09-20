@@ -26,6 +26,7 @@ function Home() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
+  const [reels, setReels] = useState([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createType, setCreateType] = useState("post");
   const [reelCaption, setReelCaption] = useState("");
@@ -49,8 +50,18 @@ function Home() {
     }
   };
 
+  const loadReels = async () => {
+    try {
+      const response = await axiosInstance.get("/reels");
+      setReels(response.data.reels || []);
+    } catch (error) {
+      console.error("Failed to fetch reels:", error);
+    }
+  };
+
   useEffect(() => {
     loadFeed();
+    loadReels();
   }, []);
 
   useEffect(() => {
@@ -167,12 +178,17 @@ function Home() {
       formData.append("caption", reelCaption.trim());
       formData.append("video", selectedReel);
 
-      await axiosInstance.post("/reels", formData, {
+      const response = await axiosInstance.post("/reels", formData, {
         headers: {
           "Content-Type": "multipart/form-data"
         }
       });
 
+      if (response.data.reel) {
+        setReels((prev) => [response.data.reel, ...prev]);
+      }
+
+      setReelLoading(false);
       closeCreatePost();
     } catch (error) {
       console.error("Create reel failed:", error);
@@ -327,6 +343,49 @@ function Home() {
           </div>
 
           <div className="space-y-5">
+            {reels.length > 0 && (
+              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-black tracking-tight">Reels</h2>
+                    <p className="mt-1 text-xs text-slate-500">Fresh videos from your circle.</p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">
+                    {reels.length}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  {reels.map((reel) => (
+                    <article key={reel._id} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950">
+                      <video
+                        src={reel.video}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="aspect-[9/16] w-full bg-black object-cover"
+                      />
+                      <div className="p-4 text-white">
+                        <div className="flex items-center gap-3">
+                          <Avatar initials={getInitials(reel.author?.name)} tone="from-pink-500 to-violet-500" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold">{reel.author?.name || "User"}</p>
+                            <p className="truncate text-xs text-white/50">@{reel.author?.username || "user"}</p>
+                          </div>
+                        </div>
+                        {reel.caption && (
+                          <p className="mt-3 text-sm leading-5 text-white/80">{reel.caption}</p>
+                        )}
+                        <p className="mt-2 text-[11px] text-white/40">
+                          {new Date(reel.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {posts.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
                 <p className="text-lg font-black">Your feed is empty</p>
