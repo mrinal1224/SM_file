@@ -451,114 +451,170 @@ function Home() {
       </main>
 
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6">
-          <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
               <div>
-                <h2 className="text-lg font-black">{createType === "reel" ? "Create Reel" : "Create Post"}</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  {createType === "reel" ? "Share a short video with your circle." : "Share something with your circle."}
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-sm font-black text-white">
+                    S
+                  </div>
+                  <h2 className="text-lg font-black tracking-tight">
+                    {createType === "reel" ? "Create a Reel" : "Create a Post"}
+                  </h2>
+                </div>
+                <p className="mt-1 pl-11 text-xs text-slate-500">
+                  {createType === "reel"
+                    ? "Share a short video with your circle."
+                    : "Share a moment with your circle."}
                 </p>
               </div>
-              <button onClick={closeCreatePost} disabled={postLoading || reelLoading} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50">✕</button>
+              <button
+                type="button"
+                onClick={closeCreatePost}
+                disabled={postLoading || reelLoading}
+                className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+              >
+                ✕
+              </button>
             </div>
 
-            <form onSubmit={createType === "reel" ? handleCreateReel : handleCreatePost} className="space-y-5 p-6">
+            <form onSubmit={createType === "reel" ? handleCreateReel : handleCreatePost} className="p-6">
               <div className="flex items-center gap-3">
                 <Avatar initials={getInitials(user?.name)} tone="from-indigo-500 to-violet-500" />
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-bold">{user?.name || "You"}</p>
                   <p className="text-xs text-slate-400">@{user?.username || "you"}</p>
                 </div>
               </div>
 
               {postError && (
-                <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{postError}</div>
+                <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {postError}
+                </div>
               )}
 
-              {createType === "reel" ? (
-                <>
-                  <textarea
-                    value={reelCaption}
-                    onChange={(event) => setReelCaption(event.target.value)}
-                    maxLength={300}
-                    rows={3}
-                    placeholder="Write a caption for your reel..."
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-                  />
+              <div className="mt-5">
+                {createType === "reel" ? (
+                  <>
+                    <textarea
+                      value={reelCaption}
+                      onChange={(event) => setReelCaption(event.target.value)}
+                      maxLength={300}
+                      rows={4}
+                      placeholder="What do you want people to see?"
+                      className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                    />
 
-                  {reelPreview && (
-                    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-black">
-                      <video src={reelPreview} controls className="max-h-80 w-full object-contain" />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (reelPreview) URL.revokeObjectURL(reelPreview);
-                          setReelPreview("");
-                          setSelectedReel(null);
-                          if (reelInputRef.current) reelInputRef.current.value = "";
-                        }}
-                        className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white"
-                      >
-                        Remove
-                      </button>
+                    {reelPreview ? (
+                      <div className="mt-4 relative overflow-hidden rounded-2xl bg-slate-950">
+                        <video src={reelPreview} controls className="max-h-96 w-full object-contain" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (reelPreview) URL.revokeObjectURL(reelPreview);
+                            setReelPreview("");
+                            setSelectedReel(null);
+                            if (reelInputRef.current) reelInputRef.current.value = "";
+                          }}
+                          className="absolute right-3 top-3 rounded-full bg-black/65 px-3 py-1.5 text-xs font-bold text-white backdrop-blur"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-lg shadow-sm">▶</span>
+                        <span className="mt-3 text-sm font-bold text-slate-700">Add your reel</span>
+                        <span className="mt-1 text-xs text-slate-400">MP4, MOV or another video up to 50MB</span>
+                        <input ref={reelInputRef} type="file" accept="video/*" onChange={handleReelChange} className="hidden" />
+                      </label>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                      <span>{selectedReel ? selectedReel.name : "No video selected"}</span>
+                      <span>{reelCaption.length}/300</span>
                     </div>
-                  )}
+                  </>
+                ) : (
+                  <>
+                    <textarea
+                      value={caption}
+                      onChange={(event) => setCaption(event.target.value)}
+                      maxLength={500}
+                      rows={5}
+                      placeholder="What’s on your mind?"
+                      className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                    />
 
-                  <label className="inline-flex cursor-pointer rounded-2xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">
-                    ▶ Add Reel
-                    <input ref={reelInputRef} type="file" accept="video/*" onChange={handleReelChange} className="hidden" />
-                  </label>
+                    {previewImage ? (
+                      <div className="relative mt-4 overflow-hidden rounded-2xl bg-slate-100">
+                        <img src={previewImage} alt="Post preview" className="max-h-96 w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (previewImage) URL.revokeObjectURL(previewImage);
+                            setPreviewImage("");
+                            setSelectedImage(null);
+                            if (fileInputRef.current) fileInputRef.current.value = "";
+                          }}
+                          className="absolute right-3 top-3 rounded-full bg-black/65 px-3 py-1.5 text-xs font-bold text-white backdrop-blur"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-lg shadow-sm">▧</span>
+                        <span className="mt-3 text-sm font-bold text-slate-700">Add an image</span>
+                        <span className="mt-1 text-xs text-slate-400">PNG, JPG or WEBP up to 5MB</span>
+                        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                      </label>
+                    )}
 
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>Video up to 50MB</span>
-                    <span>{reelCaption.length}/300</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <textarea
-                    value={caption}
-                    onChange={(event) => setCaption(event.target.value)}
-                    maxLength={500}
-                    rows={5}
-                    placeholder="What's happening?"
-                    className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-                  />
-
-                  {previewImage && (
-                    <div className="relative overflow-hidden rounded-2xl border border-slate-200">
-                      <img src={previewImage} alt="Post preview" className="max-h-80 w-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (previewImage) URL.revokeObjectURL(previewImage);
-                          setPreviewImage("");
-                          setSelectedImage(null);
-                          if (fileInputRef.current) fileInputRef.current.value = "";
-                        }}
-                        className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-bold text-white"
-                      >
-                        Remove
-                      </button>
+                    <div className="mt-3 flex items-center justify-end text-xs text-slate-400">
+                      <span>{caption.length}/500</span>
                     </div>
-                  )}
+                  </>
+                )}
+              </div>
 
-                  <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                    <label className="cursor-pointer rounded-2xl bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100">
-                      ▧ Add Photo
-                      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                    </label>
-                    <span className="text-xs text-slate-400">{caption.length}/500</span>
+              <div className="mt-6 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Add to your post</span>
+                    <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:block" />
+                    <button
+                      type="button"
+                      onClick={createType === "reel" ? openCreateReel : openCreatePost}
+                      className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      {createType === "reel" ? "Video" : "Image"}
+                    </button>
                   </div>
-                </>
-              )}
 
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={closeCreatePost} disabled={postLoading || reelLoading} className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-                <button type="submit" disabled={postLoading || reelLoading} className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
-                  {postLoading || reelLoading ? "Publishing..." : createType === "reel" ? "Publish Reel" : "Publish Post"}
-                </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={closeCreatePost}
+                      disabled={postLoading || reelLoading}
+                      className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={postLoading || reelLoading}
+                      className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {postLoading || reelLoading
+                        ? "Publishing..."
+                        : createType === "reel"
+                          ? "Publish Reel"
+                          : "Publish Post"}
+                    </button>
+                  </div>
+                </div>
               </div>
             </form>
           </div>
