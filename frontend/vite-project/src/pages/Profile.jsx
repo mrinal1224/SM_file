@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import React, { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import axiosInstance from '../axiosCalls/axios'
 import { useAuth } from '../context/AuthContext'
 
 function Profile() {
     const { username } = useParams()
+    const navigate = useNavigate()
     const { user: loggedInUser, setUser } = useAuth()
     const [userData, setUserData] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -14,7 +15,9 @@ function Profile() {
     const [editForm, setEditForm] = useState({ name: '', username: '', email: '', bio: '' })
     const [selectedImage, setSelectedImage] = useState(null)
     const [previewImage, setPreviewImage] = useState('')
+    const [editError, setEditError] = useState('')
     const [editLoading, setEditLoading] = useState(false)
+    const fileInputRef = useRef(null)
 
     const isOwnProfile = loggedInUser?.username === username
 
@@ -53,6 +56,14 @@ function Profile() {
         loadProfile()
     }, [username, isOwnProfile])
 
+    useEffect(() => {
+        return () => {
+            if (previewImage) {
+                URL.revokeObjectURL(previewImage)
+            }
+        }
+    }, [previewImage])
+
     const handleFollowToggle = async () => {
         try {
             setActionLoading(true)
@@ -82,13 +93,19 @@ function Profile() {
         })
         setSelectedImage(null)
         setPreviewImage('')
+        setEditError('')
         setIsEditOpen(true)
     }
 
     const closeEditProfile = () => {
+        if (editLoading) return
         setIsEditOpen(false)
         setSelectedImage(null)
+        setEditError('')
         setPreviewImage('')
+        if (fileInputRef.current) {
+            fileInputRef.current.value = ''
+        }
     }
 
     const handleEditChange = (event) => {
@@ -100,7 +117,24 @@ function Profile() {
         const file = event.target.files?.[0]
         if (!file) return
 
+        if (!file.type.startsWith('image/')) {
+            setEditError('Please select a valid image file.')
+            event.target.value = ''
+            return
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            setEditError('Profile image must be 5MB or smaller.')
+            event.target.value = ''
+            return
+        }
+
+        setEditError('')
         setSelectedImage(file)
+
+        if (previewImage) {
+            URL.revokeObjectURL(previewImage)
+        }
 
         const previewUrl = URL.createObjectURL(file)
         setPreviewImage(previewUrl)
@@ -108,15 +142,21 @@ function Profile() {
 
     const handleEditSubmit = async (event) => {
         event.preventDefault()
+        setEditError('')
+
+        if (!editForm.name.trim() || !editForm.username.trim() || !editForm.email.trim()) {
+            setEditError('Name, username and email are required.')
+            return
+        }
 
         try {
             setEditLoading(true)
 
             const formData = new FormData()
-            formData.append('name', editForm.name)
-            formData.append('username', editForm.username)
-            formData.append('email', editForm.email)
-            formData.append('bio', editForm.bio)
+            formData.append('name', editForm.name.trim())
+            formData.append('username', editForm.username.trim())
+            formData.append('email', editForm.email.trim())
+            formData.append('bio', editForm.bio.trim())
 
             if (selectedImage) {
                 formData.append('profileImage', selectedImage)
@@ -129,17 +169,25 @@ function Profile() {
             })
 
             const updatedUser = response.data.user
-            setUserData((prev) => ({ ...prev, ...updatedUser }))
-            setUser(updatedUser)
+
+            setUserData(updatedUser)
+            setUser({
+                ...loggedInUser,
+                ...updatedUser
+            })
+
+            const usernameChanged = updatedUser.username !== username
+
             closeEditProfile()
 
-            if (updatedUser.username !== username) {
-                window.history.replaceState(null, '', `/profile/${updatedUser.username}`)
-                window.location.reload()
+            if (usernameChanged) {
+                navigate(`/profile/${updatedUser.username}`, { replace: true })
             }
         } catch (error) {
-            console.error("Profile update failed:", error)
-            alert(error.response?.data?.message || "Failed to update profile")
+            console.error('Profile update failed:', error)
+            setEditError(
+                error.response?.data?.message || 'Unable to update profile. Please try again.'
+            )
         } finally {
             setEditLoading(false)
         }
