@@ -92,7 +92,7 @@ function Home() {
   };
 
   const closeCreatePost = () => {
-    if (postLoading) return;
+    if (postLoading || reelLoading) return;
     setIsCreateOpen(false);
     setCreateType("post");
     setCaption("");
@@ -321,10 +321,8 @@ function Home() {
               <button onClick={openCreatePost} className="hidden rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-indigo-700 sm:block">+ Post</button>
             </div>
             <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
-              <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▧ Photo</button>
-              <button onClick={openCreateReel} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▶ Reel</button>
-              <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">☻ Feeling</button>
-              <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">⌖ Check in</button>
+              <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▧ Add Image</button>
+              <button onClick={openCreateReel} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▶ Add Reel</button>
             </div>
           </div>
 
