@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import userRoutes from "./routes/user.routes.js";
+import postRoutes from "./routes/post.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,6 +52,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use("/users", userRoutes);
+app.use("/posts", postRoutes);
 
 app.use(errorMiddleware);
 
