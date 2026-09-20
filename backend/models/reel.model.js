@@ -1,0 +1,25 @@
+import mongoose from "mongoose";
+
+const reelSchema = new mongoose.Schema(
+    {
+        author: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true
+        },
+        caption: {
+            type: String,
+            trim: true,
+            maxlength: 300
+        },
+        video: {
+            type: String,
+            required: true
+        }
+    },
+    { timestamps: true }
+);
+
+const Reel = mongoose.model("Reel", reelSchema);
+
+export default Reel;
