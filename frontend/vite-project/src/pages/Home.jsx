@@ -12,37 +12,6 @@ const stories = [
   { name: "Meera", initials: "ME", tone: "from-fuchsia-500 to-purple-500" },
 ];
 
-const posts = [
-  {
-    id: 1,
-    name: "Ananya Sharma",
-    username: "ananyash",
-    time: "18 min ago",
-    initials: "AS",
-    avatarTone: "from-pink-500 to-rose-500",
-    image:
-      "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=80",
-    caption:
-      "Late afternoon at the studio. Building something, learning something, repeating. ✨",
-    likes: 248,
-    comments: 18,
-  },
-  {
-    id: 2,
-    name: "Rohan Mehta",
-    username: "rohanm",
-    time: "1 hr ago",
-    initials: "RM",
-    avatarTone: "from-cyan-500 to-blue-500",
-    image:
-      "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
-    caption:
-      "A clean desk, a good playlist and a stubborn bug. Today feels productive.",
-    likes: 172,
-    comments: 9,
-  },
-];
-
 function Avatar({ initials, tone = "from-slate-700 to-slate-900", size = "h-11 w-11" }) {
   return (
     <div
