@@ -77,3 +77,37 @@ export const getReels = async (req, res, next) => {
         next(error);
     }
 };
+
+
+export const toggleReelLike = async (req, res, next) => {
+    try {
+        const reel = await Reel.findById(req.params.id);
+
+        if (!reel) {
+            return res.status(404).json({
+                message: "Reel not found"
+            });
+        }
+
+        const userId = req.user._id;
+        const alreadyLiked = reel.likes.some(
+            (id) => id.toString() === userId.toString()
+        );
+
+        if (alreadyLiked) {
+            reel.likes.pull(userId);
+        } else {
+            reel.likes.push(userId);
+        }
+
+        await reel.save();
+
+        return res.status(200).json({
+            message: alreadyLiked ? "Reel unliked" : "Reel liked",
+            liked: !alreadyLiked,
+            likesCount: reel.likes.length
+        });
+    } catch (error) {
+        next(error);
+    }
+};
