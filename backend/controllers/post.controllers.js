@@ -95,3 +95,17 @@ export const togglePostLike = async (req, res, next) => {
         next(error);
     }
 };
+
+
+export const togglePostLike = async (req, res, next) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ message: "Post not found" });
+        const userId = req.user._id.toString();
+        const alreadyLiked = post.likes.some((id) => id.toString() === userId);
+        if (alreadyLiked) post.likes.pull(req.user._id);
+        else post.likes.push(req.user._id);
+        await post.save();
+        return res.status(200).json({ liked: !alreadyLiked, likesCount: post.likes.length });
+    } catch (error) { next(error); }
+};
