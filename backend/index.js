@@ -56,6 +56,7 @@ app.use(cookieParser());
 app.use("/users", userRoutes);
 app.use("/posts", postRoutes);
 app.use("/reels", reelRoutes);
+app.use("/comments", commentRoutes);
 
 app.use(errorMiddleware);
 
