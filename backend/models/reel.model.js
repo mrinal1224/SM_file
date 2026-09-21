@@ -15,7 +15,13 @@ const reelSchema = new mongoose.Schema(
         video: {
             type: String,
             required: true
-        }
+        },
+        likes: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User"
+            }
+        ]
     },
     { timestamps: true }
 );
