@@ -1,7 +1,8 @@
 import express from "express";
 import {
     createPost,
-    getFeed
+    getFeed,
+    togglePostLike
 } from "../controllers/post.controllers.js";
 import isAuthenticated from "../middlewares/authMiddleware.js";
 import upload from "../middlewares/upload.middleware.js";
@@ -22,3 +23,10 @@ postRoutes.get(
 );
 
 export default postRoutes;
+
+
+postRoutes.patch(
+    "/:id/like",
+    isAuthenticated,
+    togglePostLike
+);
