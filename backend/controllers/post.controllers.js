@@ -61,3 +61,37 @@ export const getFeed = async (req, res, next) => {
         next(error);
     }
 };
+
+
+export const togglePostLike = async (req, res, next) => {
+    try {
+        const post = await Post.findById(req.params.id);
+
+        if (!post) {
+            return res.status(404).json({
+                message: "Post not found"
+            });
+        }
+
+        const userId = req.user._id;
+        const alreadyLiked = post.likes.some(
+            (id) => id.toString() === userId.toString()
+        );
+
+        if (alreadyLiked) {
+            post.likes.pull(userId);
+        } else {
+            post.likes.push(userId);
+        }
+
+        await post.save();
+
+        return res.status(200).json({
+            message: alreadyLiked ? "Post unliked" : "Post liked",
+            liked: !alreadyLiked,
+            likesCount: post.likes.length
+        });
+    } catch (error) {
+        next(error);
+    }
+};
