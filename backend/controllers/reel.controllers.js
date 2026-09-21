@@ -111,3 +111,17 @@ export const toggleReelLike = async (req, res, next) => {
         next(error);
     }
 };
+
+
+export const toggleReelLike = async (req, res, next) => {
+    try {
+        const reel = await Reel.findById(req.params.id);
+        if (!reel) return res.status(404).json({ message: "Reel not found" });
+        const userId = req.user._id.toString();
+        const alreadyLiked = reel.likes.some((id) => id.toString() === userId);
+        if (alreadyLiked) reel.likes.pull(req.user._id);
+        else reel.likes.push(req.user._id);
+        await reel.save();
+        return res.status(200).json({ liked: !alreadyLiked, likesCount: reel.likes.length });
+    } catch (error) { next(error); }
+};
