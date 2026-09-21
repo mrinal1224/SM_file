@@ -37,6 +37,12 @@ function Home() {
   const [previewImage, setPreviewImage] = useState("");
   const [postError, setPostError] = useState("");
   const [postLoading, setPostLoading] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [activeContent, setActiveContent] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState("");
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
   const fileInputRef = useRef(null);
   const reelInputRef = useRef(null);
 
@@ -254,6 +260,96 @@ function Home() {
     }
   };
 
+  const handleLike = async (content) => {
+    const endpoint = content.contentType === "reel"
+      ? `/reels/${content._id}/like`
+      : `/posts/${content._id}/like`;
+
+    const previousLiked = content.likes?.some((id) => {
+      const value = typeof id === "string" ? id : id?._id;
+      return value === user?._id;
+    });
+
+    setPosts((prev) =>
+      prev.map((item) =>
+        item._id === content._id
+          ? {
+              ...item,
+              likes: previousLiked
+                ? (item.likes || []).filter((id) => (typeof id === "string" ? id : id?._id) !== user?._id)
+                : [...(item.likes || []), user?._id]
+            }
+          : item
+      )
+    );
+
+    try {
+      await axiosInstance.patch(endpoint);
+    } catch (error) {
+      console.error("Like failed:", error);
+      setPosts((prev) =>
+        prev.map((item) =>
+          item._id === content._id
+            ? {
+                ...item,
+                likes: previousLiked
+                  ? [...(item.likes || []), user?._id]
+                  : (item.likes || []).filter((id) => (typeof id === "string" ? id : id?._id) !== user?._id)
+              }
+            : item
+        )
+      );
+    }
+  };
+
+  const openComments = async (content) => {
+    setActiveContent(content);
+    setCommentsOpen(true);
+    setCommentsLoading(true);
+    setCommentText("");
+
+    try {
+      const response = await axiosInstance.get(
+        `/comments/${content.contentType}/${content._id}`
+      );
+      setComments(response.data.comments || []);
+    } catch (error) {
+      console.error("Failed to fetch comments:", error);
+      setComments([]);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const handleAddComment = async (event) => {
+    event.preventDefault();
+    const text = commentText.trim();
+    if (!text || !activeContent) return;
+
+    try {
+      setCommentSubmitting(true);
+
+      const response = await axiosInstance.post(
+        `/comments/${activeContent.contentType}/${activeContent._id}`,
+        { text }
+      );
+
+      setComments((prev) => [...prev, response.data.comment]);
+      setCommentText("");
+    } catch (error) {
+      console.error("Failed to add comment:", error);
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
+  const closeComments = () => {
+    setCommentsOpen(false);
+    setActiveContent(null);
+    setComments([]);
+    setCommentText("");
+  };
+
   const getInitials = (name) =>
     name?.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "U";
 
@@ -398,12 +494,33 @@ function Home() {
                   <div className="px-5 pb-5 pt-4">
                     <p className="text-sm leading-6 text-slate-700">{post.caption}</p>
                     <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-                      <span>0 likes</span>
-                      <span>0 comments</span>
+                      <span>{post.likes?.length || 0} likes</span>
+                      <button
+                        onClick={() => openComments(post)}
+                        className="transition hover:text-slate-700"
+                      >
+                        {commentsOpen && activeContent?._id === post._id
+                          ? comments.length
+                          : "View comments"} comments
+                      </button>
                     </div>
                     <div className="mt-4 flex border-t border-slate-100 pt-3">
-                      <button className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">♡ Like</button>
-                      <button className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">◌ Comment</button>
+                      <button
+                        onClick={() => handleLike(post)}
+                        className={`flex-1 rounded-xl py-2 text-sm font-semibold transition hover:bg-slate-50 ${
+                          post.likes?.some((id) => (typeof id === "string" ? id : id?._id) === user?._id)
+                            ? "text-red-500"
+                            : "text-slate-600"
+                        }`}
+                      >
+                        {post.likes?.some((id) => (typeof id === "string" ? id : id?._id) === user?._id) ? "♥ Liked" : "♡ Like"}
+                      </button>
+                      <button
+                        onClick={() => openComments(post)}
+                        className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                      >
+                        ◌ Comment
+                      </button>
                       <button className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">↗ Share</button>
                     </div>
                   </div>
@@ -619,6 +736,87 @@ function Home() {
             </form>
           </div>
         </div>
+      )}
+
+      {commentsOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/60 px-0 sm:items-center sm:px-4">
+          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white sm:rounded-3xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <p className="text-sm font-black">Comments</p>
+                <p className="text-xs text-slate-400">{comments.length} comments</p>
+              </div>
+              <button
+                onClick={closeComments}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {commentsLoading ? (
+                <p className="py-10 text-center text-sm text-slate-400">
+                  Loading comments...
+                </p>
+              ) : comments.length === 0 ? (
+                <div className="py-10 text-center">
+                  <p className="text-sm font-bold text-slate-700">No comments yet</p>
+                  <p className="mt-1 text-xs text-slate-400">Be the first to say something.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {comments.map((comment) => (
+                    <div key={comment._id} className="flex gap-3">
+                      <Avatar
+                        initials={getInitials(comment.user?.name)}
+                        tone="from-pink-500 to-violet-500"
+                        size="h-9 w-9"
+                      />
+                      <div className="min-w-0 flex-1 rounded-2xl bg-slate-50 px-4 py-3">
+                        <p className="text-xs font-bold">
+                          {comment.user?.name || "User"}
+                          <span className="ml-1 font-normal text-slate-400">
+                            @{comment.user?.username || "user"}
+                          </span>
+                        </p>
+                        <p className="mt-1 text-sm leading-5 text-slate-700">
+                          {comment.text}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleAddComment} className="border-t border-slate-100 p-4">
+              <div className="flex items-center gap-2">
+                <Avatar
+                  initials={getInitials(user?.name)}
+                  tone="from-indigo-500 to-violet-500"
+                  size="h-9 w-9"
+                />
+                <input
+                  value={commentText}
+                  onChange={(event) => setCommentText(event.target.value)}
+                  maxLength={500}
+                  placeholder="Write a comment..."
+                  className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white"
+                />
+                <button
+                  type="submit"
+                  disabled={!commentText.trim() || commentSubmitting}
+                  className="rounded-full bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  {commentSubmitting ? "..." : "Post"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       )}
     </div>
   );
