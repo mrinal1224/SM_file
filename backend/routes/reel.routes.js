@@ -2,7 +2,8 @@ import express from "express";
 import uploadReel from "../middlewares/reelUpload.middleware.js";
 import {
     createReel,
-    getReels
+    getReels,
+    toggleReelLike
 } from "../controllers/reel.controllers.js";
 import isAuthenticated from "../middlewares/authMiddleware.js";
 
@@ -22,3 +23,10 @@ reelRoutes.get(
 );
 
 export default reelRoutes;
+
+
+reelRoutes.patch(
+    "/:id/like",
+    isAuthenticated,
+    toggleReelLike
+);
