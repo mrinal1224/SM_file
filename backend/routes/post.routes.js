@@ -2,7 +2,6 @@ import express from "express";
 import {
     createPost,
     getFeed,
-    togglePostLike,
     togglePostLike
 } from "../controllers/post.controllers.js";
 import isAuthenticated from "../middlewares/authMiddleware.js";
