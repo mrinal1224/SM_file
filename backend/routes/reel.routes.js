@@ -3,6 +3,7 @@ import uploadReel from "../middlewares/reelUpload.middleware.js";
 import {
     createReel,
     getReels,
+    toggleReelLike,
     toggleReelLike
 } from "../controllers/reel.controllers.js";
 import isAuthenticated from "../middlewares/authMiddleware.js";
@@ -30,3 +31,6 @@ reelRoutes.patch(
     isAuthenticated,
     toggleReelLike
 );
+
+
+reelRoutes.patch("/:id/like", isAuthenticated, toggleReelLike);
