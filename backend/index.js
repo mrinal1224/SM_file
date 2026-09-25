@@ -10,6 +10,7 @@ import userRoutes from "./routes/user.routes.js";
 import postRoutes from "./routes/post.routes.js";
 import reelRoutes from "./routes/reel.routes.js";
 import commentRoutes from "./routes/comment.routes.js";
+import storyRoutes from "./routes/story.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -57,6 +58,7 @@ app.use("/users", userRoutes);
 app.use("/posts", postRoutes);
 app.use("/reels", reelRoutes);
 app.use("/comments", commentRoutes);
+app.use("/stories", storyRoutes);
 
 app.use(errorMiddleware);
 

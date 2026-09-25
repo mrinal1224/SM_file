@@ -1,10 +1,13 @@
 import cloudinary from "./cloudinary.js";
 
-const uploadToCloudinary = (buffer) => {
+const uploadToCloudinary = (
+    buffer,
+    folder = "social-media/profile-images"
+) => {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
-                folder: "social-media/profile-images",
+                folder,
                 resource_type: "image",
             },
             (error, result) => {
