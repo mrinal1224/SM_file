@@ -247,7 +247,7 @@ function Home() {
         }
       });
 
-      setPosts((prev) => [response.data.post, ...prev]);
+      setPosts((prev) => [{ ...response.data.post, contentType: "post" }, ...prev]);
       closeCreatePost();
     } catch (error) {
       console.error("Create post failed:", error);
@@ -340,6 +340,15 @@ function Home() {
       console.error("Failed to add comment:", error);
     } finally {
       setCommentSubmitting(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      await axiosInstance.delete(`/comments/${commentId}`);
+      setComments((prev) => prev.filter((comment) => comment._id !== commentId));
+    } catch (error) {
+      console.error("Failed to delete comment:", error);
     }
   };
 
@@ -774,12 +783,23 @@ function Home() {
                         size="h-9 w-9"
                       />
                       <div className="min-w-0 flex-1 rounded-2xl bg-slate-50 px-4 py-3">
-                        <p className="text-xs font-bold">
-                          {comment.user?.name || "User"}
-                          <span className="ml-1 font-normal text-slate-400">
-                            @{comment.user?.username || "user"}
-                          </span>
-                        </p>
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-xs font-bold">
+                            {comment.user?.name || "User"}
+                            <span className="ml-1 font-normal text-slate-400">
+                              @{comment.user?.username || "user"}
+                            </span>
+                          </p>
+                          {comment.user?._id === user?._id && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComment(comment._id)}
+                              className="text-[11px] font-semibold text-slate-400 transition hover:text-red-500"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                         <p className="mt-1 text-sm leading-5 text-slate-700">
                           {comment.text}
                         </p>
