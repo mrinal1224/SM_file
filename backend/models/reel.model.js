@@ -10,7 +10,7 @@ const reelSchema = new mongoose.Schema(
         caption: {
             type: String,
             trim: true,
-            maxlength: 300
+            maxlength: 500
         },
         video: {
             type: String,
