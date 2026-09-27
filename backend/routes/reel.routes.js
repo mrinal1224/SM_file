@@ -22,14 +22,10 @@ reelRoutes.get(
     getReels
 );
 
-export default reelRoutes;
-
-
 reelRoutes.patch(
     "/:id/like",
     isAuthenticated,
     toggleReelLike
 );
 
-
-reelRoutes.patch("/:id/like", isAuthenticated, toggleReelLike);
+export default reelRoutes;
