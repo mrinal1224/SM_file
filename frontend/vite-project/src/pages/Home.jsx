@@ -509,8 +509,8 @@ function Home() {
                         className="transition hover:text-slate-700"
                       >
                         {commentsOpen && activeContent?._id === post._id
-                          ? comments.length
-                          : "View comments"} comments
+                          ? `${comments.length} ${comments.length === 1 ? "comment" : "comments"}`
+                          : "View comments"}
                       </button>
                     </div>
                     <div className="mt-4 flex border-t border-slate-100 pt-3">
