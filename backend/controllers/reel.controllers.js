@@ -33,9 +33,9 @@ export const createReel = async (req, res, next) => {
 
         const { caption } = req.body;
 
-        if (caption && caption.trim().length > 300) {
+        if (caption && caption.trim().length > 500) {
             return res.status(400).json({
-                message: "Caption cannot exceed 300 characters"
+                message: "Caption cannot exceed 500 characters"
             });
         }
 
