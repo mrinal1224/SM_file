@@ -22,14 +22,10 @@ postRoutes.get(
     getFeed
 );
 
-export default postRoutes;
-
-
 postRoutes.patch(
     "/:id/like",
     isAuthenticated,
     togglePostLike
 );
 
-
-postRoutes.patch("/:id/like", isAuthenticated, togglePostLike);
+export default postRoutes;
