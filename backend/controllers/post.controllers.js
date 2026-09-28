@@ -63,6 +63,30 @@ export const getFeed = async (req, res, next) => {
 };
 
 
+export const getPostsByUsername = async (req, res, next) => {
+    try {
+        const user = await User.findOne({ username: req.params.username }).select("_id");
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const posts = await Post.find({ author: user._id })
+            .sort({ createdAt: -1 })
+            .populate("author", "name username profileImage");
+
+        return res.status(200).json({
+            message: "User posts fetched successfully",
+            posts
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
 export const togglePostLike = async (req, res, next) => {
     try {
         const post = await Post.findById(req.params.id);
