@@ -79,6 +79,29 @@ export const getReels = async (req, res, next) => {
 };
 
 
+export const getReelsByUsername = async (req, res, next) => {
+    try {
+        const user = await User.findOne({ username: req.params.username }).select("_id");
+
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found"
+            });
+        }
+
+        const reels = await Reel.find({ author: user._id })
+            .sort({ createdAt: -1 })
+            .populate("author", "name username profileImage");
+
+        return res.status(200).json({
+            message: "User reels fetched successfully",
+            reels
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const toggleReelLike = async (req, res, next) => {
     try {
         const reel = await Reel.findById(req.params.id);
