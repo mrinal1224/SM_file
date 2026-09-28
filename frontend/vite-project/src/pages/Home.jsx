@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import axiosInstance from "../axiosCalls/axios";
 import { useAuth } from "../context/AuthContext";
+import {
+  addPost,
+  setPosts,
+  setPostsError,
+  setPostsLoading,
+  updatePostLike,
+} from "../redux/postsSlice";
 
 function Avatar({ initials, tone = "from-slate-700 to-slate-900", size = "h-11 w-11" }) {
   return (
@@ -16,10 +24,25 @@ const getLikeId = (like) => like?._id || like;
 function Home() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [posts, setPosts] = useState([]);
+
+  // REDUX STEP 5: GET ACCESS TO THE STORE
+  //
+  // dispatch sends an action to Redux.
+  // useSelector reads data from Redux.
+  //
+  // WHY:
+  // "posts" no longer belongs to Home.jsx.
+  // Home is now only a CONSUMER of the application-level posts state.
+  const dispatch = useDispatch();
+  const posts = useSelector((state) => state.posts.items);
+  const postsLoading = useSelector((state) => state.posts.loading);
+  const postsError = useSelector((state) => state.posts.error);
+
+  // Reels are still local state because this lesson is specifically about
+  // solving shared Post state. We should not put everything in Redux blindly.
   const [reels, setReels] = useState([]);
-  const [feedLoading, setFeedLoading] = useState(true);
-  const [feedError, setFeedError] = useState("");
+  const [reelsLoading, setReelsLoading] = useState(true);
+  const [reelsError, setReelsError] = useState("");
   const [stories, setStories] = useState([]);
   const [storyLoading, setStoryLoading] = useState(true);
   const [storyError, setStoryError] = useState("");
@@ -56,49 +79,58 @@ function Home() {
     );
   };
 
-  // HOME FEED FETCH:
-  // Keep the flow simple: fetch posts first, then fetch reels.
-  // Each request has its own error handling so one API failing does not stop
-  // the other content type from being loaded.
+  // REDUX STEP 6: FETCH POSTS INTO THE GLOBAL STORE
+  //
+  // The API call still exists. Redux does NOT replace the backend.
+  // The important difference is WHERE the response is stored.
+  //
+  // BEFORE:
+  // GET /posts/feed -> setPosts(...) -> Home local state
+  //
+  // NOW:
+  // GET /posts/feed -> dispatch(setPosts(...)) -> Redux store
   useEffect(() => {
     const fetchPosts = async () => {
       try {
-        const response = await axiosInstance.get("/post");
-        setPosts(response.data.posts || []);
+        dispatch(setPostsLoading(true));
+        dispatch(setPostsError(""));
+
+        const response = await axiosInstance.get("/posts/feed");
+
+        // This action updates state.posts.items inside Redux.
+        dispatch(setPosts(response.data.posts || []));
       } catch (error) {
         console.error("Posts fetch failed:", error);
-        setFeedError(
-          error.response?.data?.message || "Unable to load posts."
+        dispatch(
+          setPostsError(
+            error.response?.data?.message || "Unable to load posts."
+          )
         );
+      } finally {
+        dispatch(setPostsLoading(false));
       }
     };
 
     const fetchReels = async () => {
       try {
-        const response = await axiosInstance.get("/reel");
+        setReelsLoading(true);
+        setReelsError("");
+
+        const response = await axiosInstance.get("/reels");
         setReels(response.data.reels || []);
       } catch (error) {
         console.error("Reels fetch failed:", error);
-        setFeedError(
+        setReelsError(
           error.response?.data?.message || "Unable to load reels."
         );
-      }
-    };
-
-    const loadFeed = async () => {
-      try {
-        setFeedLoading(true);
-        setFeedError("");
-
-        await fetchPosts();
-        await fetchReels();
       } finally {
-        setFeedLoading(false);
+        setReelsLoading(false);
       }
     };
 
-    loadFeed();
-  }, []);
+    fetchPosts();
+    fetchReels();
+  }, [dispatch]);
 
   // STORIES:
   // Fetch active stories from people the current user follows.
@@ -107,7 +139,7 @@ function Home() {
       try {
         setStoryLoading(true);
         setStoryError("");
-        const response = await axiosInstance.get("/story/getStories");
+        const response = await axiosInstance.get("/stories/getStories");
         setStories(response.data.stories || []);
       } catch (error) {
         console.error("Stories fetch failed:", error);
@@ -136,7 +168,7 @@ function Home() {
       formData.append("caption", storyCaption.trim());
       formData.append("image", storyFile);
 
-      const response = await axiosInstance.post("/story/createStory", formData);
+      const response = await axiosInstance.post("/stories/createStory", formData);
       setStories((prevStories) => [response.data.story, ...prevStories]);
       setStoryFile(null);
       setStoryCaption("");
@@ -183,10 +215,15 @@ function Home() {
       }
 
       if (contentType === "post") {
-        const response = await axiosInstance.post("/post/create", formData);
-        setPosts((prevPosts) => [response.data.post, ...prevPosts]);
+        const response = await axiosInstance.post("/posts", formData);
+
+        // REDUX STEP 7: ADD CREATED POST TO THE SHARED STORE
+        //
+        // Home does not maintain its own posts array anymore.
+        // dispatch(addPost(...)) changes the single shared source of truth.
+        dispatch(addPost(response.data.post));
       } else {
-        const response = await axiosInstance.post("/reel/createReel", formData);
+        const response = await axiosInstance.post("/reels", formData);
         setReels((prevReels) => [response.data.reel, ...prevReels]);
       }
 
@@ -237,32 +274,54 @@ function Home() {
 
   const handleLike = async (type, id) => {
     const key = getItemKey(type, id);
-    const setItems = type === "post" ? setPosts : setReels;
 
     try {
       setLikeLoading((prev) => ({ ...prev, [key]: true }));
       setInteractionError((prev) => ({ ...prev, [key]: "" }));
 
-      const response = await axiosInstance.post(`/${type}/likes/${id}`);
+      // Posts and reels use different backend resources.
+      // Only Post state is shared through Redux in this lesson.
+      const endpoint =
+        type === "post"
+          ? `/posts/${id}/like`
+          : `/reels/${id}/like`;
+
+      const response = await axiosInstance.patch(endpoint);
       const liked = response.data.liked;
 
-      setItems((items) =>
-        items.map((item) => {
-          if (item._id !== id) return item;
+      if (type === "post") {
+        // REDUX STEP 8: UPDATE THE SHARED POST, NOT A PAGE COPY
+        //
+        // This action changes Post #123 in the Redux store.
+        // Any component selecting that post from Redux receives the update.
+        dispatch(
+          updatePostLike({
+            postId: id,
+            userId: user?._id,
+            liked,
+          })
+        );
+      } else {
+        // Reels are intentionally still handled with component state.
+        setReels((items) =>
+          items.map((item) => {
+            if (item._id !== id) return item;
 
-          const currentLikes = item.likes || [];
-          const likesWithoutCurrentUser = currentLikes.filter(
-            (like) => getLikeId(like)?.toString() !== user?._id?.toString()
-          );
+            const currentLikes = item.likes || [];
+            const likesWithoutCurrentUser = currentLikes.filter(
+              (like) => getLikeId(like)?.toString() !== user?._id?.toString()
+            );
 
-          return {
-            ...item,
-            likes: liked && user?._id
-              ? [...likesWithoutCurrentUser, user._id]
-              : likesWithoutCurrentUser,
-          };
-        })
-      );
+            return {
+              ...item,
+              likes:
+                liked && user?._id
+                  ? [...likesWithoutCurrentUser, user._id]
+                  : likesWithoutCurrentUser,
+            };
+          })
+        );
+      }
     } catch (error) {
       console.error("Like update failed:", error);
       setInteractionError((prev) => ({
@@ -288,7 +347,7 @@ function Home() {
       setCommentLoading((prev) => ({ ...prev, [key]: true }));
       setInteractionError((prev) => ({ ...prev, [key]: "" }));
 
-      const response = await axiosInstance.get(`/comment/${type}/${id}`);
+      const response = await axiosInstance.get(`/comments/${type}/${id}`);
 
       setCommentsByItem((prev) => ({
         ...prev,
@@ -317,7 +376,7 @@ function Home() {
       setCommentLoading((prev) => ({ ...prev, [key]: true }));
       setInteractionError((prev) => ({ ...prev, [key]: "" }));
 
-      const response = await axiosInstance.post(`/comment/${type}/${id}`, {
+      const response = await axiosInstance.post(`/comments/${type}/${id}`, {
         text,
       });
 
@@ -346,7 +405,7 @@ function Home() {
 
     try {
       setInteractionError((prev) => ({ ...prev, [key]: "" }));
-      await axiosInstance.delete(`/comment/${commentId}`);
+      await axiosInstance.delete(`/comments/${commentId}`);
 
       setCommentsByItem((prev) => ({
         ...prev,
@@ -703,19 +762,19 @@ function Home() {
           </form>
 
           <div className="space-y-5">
-            {feedLoading && (
+            {postsLoading || reelsLoading && (
               <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
                 Loading your feed...
               </div>
             )}
 
-            {!feedLoading && feedError && (
+            {!postsLoading || reelsLoading && postsError || reelsError && (
               <div className="rounded-3xl border border-red-100 bg-red-50 p-5 text-sm text-red-600 shadow-sm">
-                {feedError}
+                {postsError || reelsError}
               </div>
             )}
 
-            {!feedLoading && !feedError && posts.length === 0 && reels.length === 0 && (
+            {!postsLoading || reelsLoading && !postsError || reelsError && posts.length === 0 && reels.length === 0 && (
               <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
                 <p className="font-bold text-slate-700">Your feed is empty</p>
                 <p className="mt-1 text-sm text-slate-500">
