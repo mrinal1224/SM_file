@@ -1,341 +1,363 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import axiosInstance from "../axiosCalls/axios";
-
-const buildStoryGroups = (stories, currentUser) => {
-  const groups = new Map();
-
-  stories.forEach((story) => {
-    const authorId = story.author?._id?.toString();
-    if (!authorId) return;
-
-    if (!groups.has(authorId)) {
-      groups.set(authorId, {
-        author: story.author,
-        stories: []
-      });
-    }
-
-    groups.get(authorId).stories.push(story);
-  });
-
-  const currentUserId = currentUser?._id?.toString();
-  const result = Array.from(groups.values());
-
-  if (currentUserId && !groups.has(currentUserId)) {
-    result.unshift({
-      author: currentUser,
-      stories: []
-    });
-  }
-
-  return result.sort((a, b) => {
-    const aIsCurrentUser = a.author?._id?.toString() === currentUserId;
-    const bIsCurrentUser = b.author?._id?.toString() === currentUserId;
-
-    if (aIsCurrentUser) return -1;
-    if (bIsCurrentUser) return 1;
-
-    return new Date(a.stories[0]?.createdAt || 0) - new Date(b.stories[0]?.createdAt || 0);
-  });
-};
+import { useAuth } from "../context/AuthContext";
 
 function Avatar({ initials, tone = "from-slate-700 to-slate-900", size = "h-11 w-11" }) {
   return (
-    <div
-      className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${tone} text-xs font-bold text-white ring-2 ring-white`}
-    >
+    <div className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${tone} text-xs font-bold text-white ring-2 ring-white`}>
       {initials}
     </div>
   );
 }
 
+const getLikeId = (like) => like?._id || like;
+
 function Home() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [createType, setCreateType] = useState("post");
-  const [reelCaption, setReelCaption] = useState("");
-  const [selectedReel, setSelectedReel] = useState(null);
-  const [reelPreview, setReelPreview] = useState("");
-  const [reelLoading, setReelLoading] = useState(false);
-  const [caption, setCaption] = useState("");
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [previewImage, setPreviewImage] = useState("");
-  const [postError, setPostError] = useState("");
-  const [postLoading, setPostLoading] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
-  const [activeContent, setActiveContent] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState("");
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
-
-  const [storyFeed, setStoryFeed] = useState([]);
+  const [reels, setReels] = useState([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feedError, setFeedError] = useState("");
+  const [stories, setStories] = useState([]);
   const [storyLoading, setStoryLoading] = useState(true);
   const [storyError, setStoryError] = useState("");
-  const [isStoryCreateOpen, setIsStoryCreateOpen] = useState(false);
+  const [storyFile, setStoryFile] = useState(null);
   const [storyCaption, setStoryCaption] = useState("");
-  const [selectedStoryImage, setSelectedStoryImage] = useState(null);
-  const [storyPreview, setStoryPreview] = useState("");
-  const [storySubmitting, setStorySubmitting] = useState(false);
-  const [activeStoryAuthorId, setActiveStoryAuthorId] = useState(null);
-  const [activeStoryIndex, setActiveStoryIndex] = useState(0);
+  const [storyCreating, setStoryCreating] = useState(false);
+  const [activeStory, setActiveStory] = useState(null);
 
-  const fileInputRef = useRef(null);
-  const reelInputRef = useRef(null);
-  const storyInputRef = useRef(null);
+  // CREATE FLOW STATE:
+  // One simple composer supports both posts and reels.
+  // contentType decides which backend endpoint and file field we use.
+  const [contentType, setContentType] = useState("post");
+  const [caption, setCaption] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
 
-  const storyGroups = buildStoryGroups(storyFeed, user);
-  const activeStoryGroup = storyGroups.find(
-    (group) => group.author?._id?.toString() === activeStoryAuthorId
-  );
-  const activeStory = activeStoryGroup?.stories?.[activeStoryIndex];
+  // LIKE + COMMENT STATE:
+  // Comments are fetched only when a user opens them for a post/reel.
+  const [openComments, setOpenComments] = useState({});
+  const [commentsByItem, setCommentsByItem] = useState({});
+  const [commentInputs, setCommentInputs] = useState({});
+  const [commentLoading, setCommentLoading] = useState({});
+  const [likeLoading, setLikeLoading] = useState({});
+  const [interactionError, setInteractionError] = useState({});
 
-  const loadFeed = async () => {
-    try {
-      const response = await axiosInstance.get("/posts/feed");
-      setPosts(response.data.posts || []);
-    } catch (error) {
-      console.error("Failed to fetch feed:", error);
-    }
+  const getItemKey = (type, id) => `${type}-${id}`;
+
+  const isLikedByCurrentUser = (item) => {
+    if (!user?._id) return false;
+
+    return (item.likes || []).some(
+      (like) => getLikeId(like)?.toString() === user._id.toString()
+    );
   };
 
-  const loadReels = async () => {
-    try {
-      const response = await axiosInstance.get("/reels");
-      return response.data.reels || [];
-    } catch (error) {
-      console.error("Failed to fetch reels:", error);
-      return [];
-    }
-  };
-
-  const loadStories = async () => {
-    try {
-      setStoryLoading(true);
-      setStoryError("");
-
-      const response = await axiosInstance.get("/stories/feed");
-      setStoryFeed(response.data.stories || []);
-    } catch (error) {
-      console.error("Failed to fetch stories:", error);
-      setStoryError(
-        error.response?.data?.message || "Unable to load stories."
-      );
-    } finally {
-      setStoryLoading(false);
-    }
-  };
-
+  // HOME FEED FETCH:
+  // Keep the flow simple: fetch posts first, then fetch reels.
+  // Each request has its own error handling so one API failing does not stop
+  // the other content type from being loaded.
   useEffect(() => {
-    const loadHomeFeed = async () => {
-      const [postList, reelList] = await Promise.all([
-        axiosInstance.get("/posts/feed").then((response) => response.data.posts || []),
-        loadReels()
-      ]);
-
-      setPosts([
-        ...postList.map((post) => ({ ...post, contentType: "post" })),
-        ...reelList.map((reel) => ({ ...reel, contentType: "reel" }))
-      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    const fetchPosts = async () => {
+      try {
+        const response = await axiosInstance.get("/post");
+        setPosts(response.data.posts || []);
+      } catch (error) {
+        console.error("Posts fetch failed:", error);
+        setFeedError(
+          error.response?.data?.message || "Unable to load posts."
+        );
+      }
     };
 
-    loadHomeFeed().catch((error) => {
-      console.error("Failed to fetch home feed:", error);
-    });
+    const fetchReels = async () => {
+      try {
+        const response = await axiosInstance.get("/reel");
+        setReels(response.data.reels || []);
+      } catch (error) {
+        console.error("Reels fetch failed:", error);
+        setFeedError(
+          error.response?.data?.message || "Unable to load reels."
+        );
+      }
+    };
 
-    loadStories();
+    const loadFeed = async () => {
+      try {
+        setFeedLoading(true);
+        setFeedError("");
+
+        await fetchPosts();
+        await fetchReels();
+      } finally {
+        setFeedLoading(false);
+      }
+    };
+
+    loadFeed();
   }, []);
 
+  // STORIES:
+  // Fetch active stories from people the current user follows.
   useEffect(() => {
-    return () => {
-      if (previewImage) URL.revokeObjectURL(previewImage);
+    const fetchStories = async () => {
+      try {
+        setStoryLoading(true);
+        setStoryError("");
+        const response = await axiosInstance.get("/story/getStories");
+        setStories(response.data.stories || []);
+      } catch (error) {
+        console.error("Stories fetch failed:", error);
+        setStoryError(error.response?.data?.message || "Unable to load stories.");
+      } finally {
+        setStoryLoading(false);
+      }
     };
-  }, [previewImage]);
 
-  useEffect(() => {
-    return () => {
-      if (storyPreview) URL.revokeObjectURL(storyPreview);
-    };
-  }, [storyPreview]);
-
-  const openCreateStory = () => {
-    if (storyPreview) URL.revokeObjectURL(storyPreview);
-
-    setStoryCaption("");
-    setSelectedStoryImage(null);
-    setStoryPreview("");
-    setStoryError("");
-
-    if (storyInputRef.current) {
-      storyInputRef.current.value = "";
-    }
-
-    setIsStoryCreateOpen(true);
-  };
-
-  const closeCreateStory = () => {
-    if (storySubmitting) return;
-
-    if (storyPreview) URL.revokeObjectURL(storyPreview);
-
-    setIsStoryCreateOpen(false);
-    setStoryCaption("");
-    setSelectedStoryImage(null);
-    setStoryPreview("");
-    setStoryError("");
-
-    if (storyInputRef.current) {
-      storyInputRef.current.value = "";
-    }
-  };
-
-  const handleStoryImageChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setStoryError("Please select a valid image file.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setStoryError("Story image must be 5MB or smaller.");
-      event.target.value = "";
-      return;
-    }
-
-    setStoryError("");
-    setSelectedStoryImage(file);
-
-    if (storyPreview) URL.revokeObjectURL(storyPreview);
-    setStoryPreview(URL.createObjectURL(file));
-  };
+    fetchStories();
+  }, []);
 
   const handleCreateStory = async (event) => {
     event.preventDefault();
 
-    if (!selectedStoryImage) {
-      setStoryError("Select an image for your story.");
+    if (!storyFile) {
+      setStoryError("Please select an image for your story.");
       return;
     }
 
     try {
-      setStorySubmitting(true);
+      setStoryCreating(true);
       setStoryError("");
 
       const formData = new FormData();
-      formData.append("image", selectedStoryImage);
       formData.append("caption", storyCaption.trim());
+      formData.append("image", storyFile);
 
-      const response = await axiosInstance.post("/stories", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data"
-        }
-      });
-
-      setStoryFeed((prev) => [...prev, response.data.story]);
-
-      if (storyPreview) URL.revokeObjectURL(storyPreview);
-      setStoryPreview("");
-      setSelectedStoryImage(null);
+      const response = await axiosInstance.post("/story/createStory", formData);
+      setStories((prevStories) => [response.data.story, ...prevStories]);
+      setStoryFile(null);
       setStoryCaption("");
-      setIsStoryCreateOpen(false);
+      event.target.reset();
     } catch (error) {
-      console.error("Create story failed:", error);
-      setStoryError(
-        error.response?.data?.message || "Unable to create story."
+      console.error("Story creation failed:", error);
+      setStoryError(error.response?.data?.message || "Unable to create story.");
+    } finally {
+      setStoryCreating(false);
+    }
+  };
+
+  const getStoryLabel = (story) => {
+    if (story.author?._id === user?._id) return "Your Story";
+    return story.author?.username || "Story";
+  };
+
+  // CREATE POST / REEL:
+  // We send FormData because both backend create routes accept an uploaded file.
+  const handleCreateContent = async (event) => {
+    event.preventDefault();
+
+    if (contentType === "post" && !caption.trim() && !selectedFile) {
+      setCreateError("Add a caption or select an image.");
+      return;
+    }
+
+    if (contentType === "reel" && !selectedFile) {
+      setCreateError("Please select a video.");
+      return;
+    }
+
+    try {
+      setCreateLoading(true);
+      setCreateError("");
+
+      const formData = new FormData();
+      formData.append("caption", caption.trim());
+      if (selectedFile) {
+        formData.append(
+          contentType === "post" ? "image" : "video",
+          selectedFile
+        );
+      }
+
+      if (contentType === "post") {
+        const response = await axiosInstance.post("/post/create", formData);
+        setPosts((prevPosts) => [response.data.post, ...prevPosts]);
+      } else {
+        const response = await axiosInstance.post("/reel/createReel", formData);
+        setReels((prevReels) => [response.data.reel, ...prevReels]);
+      }
+
+      setCaption("");
+      setSelectedFile(null);
+      event.target.reset();
+    } catch (error) {
+      console.error("Content creation failed:", error);
+      setCreateError(
+        error.response?.data?.message || "Unable to create content."
       );
     } finally {
-      setStorySubmitting(false);
+      setCreateLoading(false);
     }
   };
 
-  const openStoryViewer = (authorId, storyIndex = 0) => {
-    setActiveStoryAuthorId(authorId?.toString());
-    setActiveStoryIndex(storyIndex);
-  };
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  const closeStoryViewer = () => {
-    setActiveStoryAuthorId(null);
-    setActiveStoryIndex(0);
-  };
+    const isPost = contentType === "post";
+    const hasValidType = isPost
+      ? file.type.startsWith("image/")
+      : file.type.startsWith("video/");
+    const maxSize = isPost ? 5 * 1024 * 1024 : 50 * 1024 * 1024;
 
-  const showNextStory = () => {
-    if (!activeStoryGroup) return;
-
-    if (activeStoryIndex < activeStoryGroup.stories.length - 1) {
-      setActiveStoryIndex((prev) => prev + 1);
+    if (!hasValidType) {
+      setCreateError(isPost ? "Please select a valid image." : "Please select a valid video.");
+      event.target.value = "";
       return;
     }
 
-    const nonEmptyGroups = storyGroups.filter(
-      (group) => group.stories.length > 0
-    );
-    const currentGroupIndex = nonEmptyGroups.findIndex(
-      (group) =>
-        group.author?._id?.toString() === activeStoryAuthorId
-    );
-
-    if (currentGroupIndex < nonEmptyGroups.length - 1) {
-      setActiveStoryAuthorId(
-        nonEmptyGroups[currentGroupIndex + 1].author._id.toString()
-      );
-      setActiveStoryIndex(0);
+    if (file.size > maxSize) {
+      setCreateError(isPost ? "Image must be 5MB or smaller." : "Video must be 50MB or smaller.");
+      event.target.value = "";
       return;
     }
 
-    closeStoryViewer();
+    setSelectedFile(file);
+    setCreateError("");
   };
 
-  const showPreviousStory = () => {
-    if (!activeStoryGroup) return;
-
-    if (activeStoryIndex > 0) {
-      setActiveStoryIndex((prev) => prev - 1);
-      return;
-    }
-
-    const nonEmptyGroups = storyGroups.filter(
-      (group) => group.stories.length > 0
-    );
-    const currentGroupIndex = nonEmptyGroups.findIndex(
-      (group) =>
-        group.author?._id?.toString() === activeStoryAuthorId
-    );
-
-    if (currentGroupIndex > 0) {
-      const previousGroup = nonEmptyGroups[currentGroupIndex - 1];
-
-      setActiveStoryAuthorId(previousGroup.author._id.toString());
-      setActiveStoryIndex(previousGroup.stories.length - 1);
-    }
+  const handleContentTypeChange = (type) => {
+    setContentType(type);
+    setSelectedFile(null);
+    setCreateError("");
   };
 
-  const handleDeleteStory = async (storyId) => {
+  const handleLike = async (type, id) => {
+    const key = getItemKey(type, id);
+    const setItems = type === "post" ? setPosts : setReels;
+
     try {
-      await axiosInstance.delete(`/stories/${storyId}`);
+      setLikeLoading((prev) => ({ ...prev, [key]: true }));
+      setInteractionError((prev) => ({ ...prev, [key]: "" }));
 
-      const currentGroupStoryCount = activeStoryGroup?.stories?.length || 0;
+      const response = await axiosInstance.post(`/${type}/likes/${id}`);
+      const liked = response.data.liked;
 
-      setStoryFeed((prev) =>
-        prev.filter((story) => story._id !== storyId)
+      setItems((items) =>
+        items.map((item) => {
+          if (item._id !== id) return item;
+
+          const currentLikes = item.likes || [];
+          const likesWithoutCurrentUser = currentLikes.filter(
+            (like) => getLikeId(like)?.toString() !== user?._id?.toString()
+          );
+
+          return {
+            ...item,
+            likes: liked && user?._id
+              ? [...likesWithoutCurrentUser, user._id]
+              : likesWithoutCurrentUser,
+          };
+        })
       );
-
-      if (currentGroupStoryCount <= 1) {
-        closeStoryViewer();
-      } else if (activeStoryIndex >= currentGroupStoryCount - 1) {
-        setActiveStoryIndex((prev) => Math.max(0, prev - 1));
-      }
     } catch (error) {
-      console.error("Delete story failed:", error);
-      setStoryError(
-        error.response?.data?.message || "Unable to delete story."
-      );
+      console.error("Like update failed:", error);
+      setInteractionError((prev) => ({
+        ...prev,
+        [key]: error.response?.data?.message || "Unable to update like.",
+      }));
+    } finally {
+      setLikeLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleToggleComments = async (type, id) => {
+    const key = getItemKey(type, id);
+    const willOpen = !openComments[key];
+
+    setOpenComments((prev) => ({ ...prev, [key]: willOpen }));
+
+    if (!willOpen || commentsByItem[key] !== undefined) {
+      return;
+    }
+
+    try {
+      setCommentLoading((prev) => ({ ...prev, [key]: true }));
+      setInteractionError((prev) => ({ ...prev, [key]: "" }));
+
+      const response = await axiosInstance.get(`/comment/${type}/${id}`);
+
+      setCommentsByItem((prev) => ({
+        ...prev,
+        [key]: response.data.comments || [],
+      }));
+    } catch (error) {
+      console.error("Comments fetch failed:", error);
+      setInteractionError((prev) => ({
+        ...prev,
+        [key]: error.response?.data?.message || "Unable to load comments.",
+      }));
+    } finally {
+      setCommentLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleAddComment = async (event, type, id) => {
+    event.preventDefault();
+
+    const key = getItemKey(type, id); // reel or post
+    const text = commentInputs[key]?.trim();
+
+    if (!text) return;
+
+    try {
+      setCommentLoading((prev) => ({ ...prev, [key]: true }));
+      setInteractionError((prev) => ({ ...prev, [key]: "" }));
+
+      const response = await axiosInstance.post(`/comment/${type}/${id}`, {
+        text,
+      });
+
+      setCommentsByItem((prev) => ({
+        ...prev,
+        [key]: [...(prev[key] || []), response.data.comment],
+      }));
+
+      setCommentInputs((prev) => ({
+        ...prev,
+        [key]: "",
+      }));
+    } catch (error) {
+      console.error("Comment create failed:", error);
+      setInteractionError((prev) => ({
+        ...prev,
+        [key]: error.response?.data?.message || "Unable to add comment.",
+      }));
+    } finally {
+      setCommentLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleDeleteComment = async (commentId, type, id) => {
+    const key = getItemKey(type, id);
+
+    try {
+      setInteractionError((prev) => ({ ...prev, [key]: "" }));
+      await axiosInstance.delete(`/comment/${commentId}`);
+
+      setCommentsByItem((prev) => ({
+        ...prev,
+        [key]: (prev[key] || []).filter((comment) => comment._id !== commentId),
+      }));
+    } catch (error) {
+      console.error("Comment delete failed:", error);
+      setInteractionError((prev) => ({
+        ...prev,
+        [key]: error.response?.data?.message || "Unable to delete comment.",
+      }));
     }
   };
 
@@ -344,278 +366,138 @@ function Home() {
     navigate("/login", { replace: true });
   };
 
-  const resetReelState = () => {
-    if (reelPreview) URL.revokeObjectURL(reelPreview);
-    setReelCaption("");
-    setSelectedReel(null);
-    setReelPreview("");
-  };
-
-  const openCreatePost = () => {
-    resetReelState();
-    setCaption("");
-    setSelectedImage(null);
-    setPreviewImage("");
-    setPostError("");
-    setCreateType("post");
-    setIsCreateOpen(true);
-  };
-
-  const openCreateReel = () => {
-    setCaption("");
-    setSelectedImage(null);
-    setPreviewImage("");
-    setPostError("");
-    resetReelState();
-    setCreateType("reel");
-    setIsCreateOpen(true);
-  };
-
-  const closeCreatePost = () => {
-    if (postLoading || reelLoading) return;
-    setIsCreateOpen(false);
-    setCreateType("post");
-    setCaption("");
-    setSelectedImage(null);
-    setPostError("");
-    if (previewImage) URL.revokeObjectURL(previewImage);
-    setPreviewImage("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    if (reelInputRef.current) reelInputRef.current.value = "";
-    resetReelState();
-  };
-
-  const handleImageChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setPostError("Please select a valid image file.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setPostError("Image must be 5MB or smaller.");
-      event.target.value = "";
-      return;
-    }
-
-    setPostError("");
-    setSelectedImage(file);
-
-    if (previewImage) URL.revokeObjectURL(previewImage);
-    setPreviewImage(URL.createObjectURL(file));
-  };
-
-  const handleReelChange = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("video/")) {
-      setPostError("Please select a valid video file.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > 50 * 1024 * 1024) {
-      setPostError("Reel must be 50MB or smaller.");
-      event.target.value = "";
-      return;
-    }
-
-    setPostError("");
-    setSelectedReel(file);
-
-    if (reelPreview) URL.revokeObjectURL(reelPreview);
-    setReelPreview(URL.createObjectURL(file));
-  };
-
-  const handleCreateReel = async (event) => {
-    event.preventDefault();
-    setPostError("");
-
-    if (!selectedReel) {
-      setPostError("Select a video to upload.");
-      return;
-    }
-
-    try {
-      setReelLoading(true);
-
-      const formData = new FormData();
-      formData.append("caption", reelCaption.trim());
-      formData.append("video", selectedReel);
-
-      const response = await axiosInstance.post("/reels", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data"
-        }
-      });
-
-      if (response.data.reel) {
-        setPosts((prev) => [
-          { ...response.data.reel, contentType: "reel" },
-          ...prev
-        ]);
-      }
-
-      setReelLoading(false);
-      closeCreatePost();
-    } catch (error) {
-      console.error("Create reel failed:", error);
-      setPostError(
-        error.response?.data?.message || "Unable to upload reel. Please try again."
-      );
-    } finally {
-      setReelLoading(false);
-    }
-  };
-
-  const handleCreatePost = async (event) => {
-    event.preventDefault();
-    setPostError("");
-
-    if (!caption.trim() && !selectedImage) {
-      setPostError("Add a caption or upload an image.");
-      return;
-    }
-
-    try {
-      setPostLoading(true);
-
-      const formData = new FormData();
-      formData.append("caption", caption.trim());
-
-      if (selectedImage) {
-        formData.append("image", selectedImage);
-      }
-
-      const response = await axiosInstance.post("/posts", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data"
-        }
-      });
-
-      setPosts((prev) => [{ ...response.data.post, contentType: "post" }, ...prev]);
-      closeCreatePost();
-    } catch (error) {
-      console.error("Create post failed:", error);
-      setPostError(
-        error.response?.data?.message ||
-          "Unable to create post. Please try again."
-      );
-    } finally {
-      setPostLoading(false);
-    }
-  };
-
-  const handleLike = async (content) => {
-    const endpoint = content.contentType === "reel"
-      ? `/reels/${content._id}/like`
-      : `/posts/${content._id}/like`;
-
-    const previousLiked = content.likes?.some((id) => {
-      const value = typeof id === "string" ? id : id?._id;
-      return value === user?._id;
-    });
-
-    setPosts((prev) =>
-      prev.map((item) =>
-        item._id === content._id
-          ? {
-              ...item,
-              likes: previousLiked
-                ? (item.likes || []).filter((id) => (typeof id === "string" ? id : id?._id) !== user?._id)
-                : [...(item.likes || []), user?._id]
-            }
-          : item
-      )
-    );
-
-    try {
-      await axiosInstance.patch(endpoint);
-    } catch (error) {
-      console.error("Like failed:", error);
-      setPosts((prev) =>
-        prev.map((item) =>
-          item._id === content._id
-            ? {
-                ...item,
-                likes: previousLiked
-                  ? [...(item.likes || []), user?._id]
-                  : (item.likes || []).filter((id) => (typeof id === "string" ? id : id?._id) !== user?._id)
-              }
-            : item
-        )
-      );
-    }
-  };
-
-  const openComments = async (content) => {
-    setActiveContent(content);
-    setCommentsOpen(true);
-    setCommentsLoading(true);
-    setCommentText("");
-
-    try {
-      const response = await axiosInstance.get(
-        `/comments/${content.contentType}/${content._id}`
-      );
-      setComments(response.data.comments || []);
-    } catch (error) {
-      console.error("Failed to fetch comments:", error);
-      setComments([]);
-    } finally {
-      setCommentsLoading(false);
-    }
-  };
-
-  const handleAddComment = async (event) => {
-    event.preventDefault();
-    const text = commentText.trim();
-    if (!text || !activeContent) return;
-
-    try {
-      setCommentSubmitting(true);
-
-      const response = await axiosInstance.post(
-        `/comments/${activeContent.contentType}/${activeContent._id}`,
-        { text }
-      );
-
-      setComments((prev) => [...prev, response.data.comment]);
-      setCommentText("");
-    } catch (error) {
-      console.error("Failed to add comment:", error);
-    } finally {
-      setCommentSubmitting(false);
-    }
-  };
-
-  const handleDeleteComment = async (commentId) => {
-    try {
-      await axiosInstance.delete(`/comments/${commentId}`);
-      setComments((prev) => prev.filter((comment) => comment._id !== commentId));
-    } catch (error) {
-      console.error("Failed to delete comment:", error);
-    }
-  };
-
-  const closeComments = () => {
-    setCommentsOpen(false);
-    setActiveContent(null);
-    setComments([]);
-    setCommentText("");
-  };
-
   const getInitials = (name) =>
     name?.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "U";
 
-  const getStoryLabel = (group) =>
-    group.author?._id?.toString() === user?._id?.toString()
-      ? "Your Story"
-      : group.author?.name?.split(" ")[0] || "Story";
+  const renderInteractions = (item, type) => {
+    const key = getItemKey(type, item._id);
+    const liked = isLikedByCurrentUser(item);
+    const comments = commentsByItem[key];
+
+    return (
+      <>
+        <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
+          <span>{item.likes?.length || 0} likes</span>
+          <span>
+            {comments !== undefined
+              ? `${comments.length} ${comments.length === 1 ? "comment" : "comments"}`
+              : "Comments"}
+          </span>
+        </div>
+
+        <div className="mt-4 flex border-t border-slate-100 pt-3">
+          <button
+            type="button"
+            onClick={() => handleLike(type, item._id)}
+            disabled={likeLoading[key]}
+            className={`flex-1 rounded-xl py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              liked
+                ? "text-rose-600 hover:bg-rose-50"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {liked ? "♥ Liked" : "♡ Like"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleToggleComments(type, item._id)}
+            className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            ◌ {openComments[key] ? "Hide Comments" : "Comment"}
+          </button>
+
+          <button
+            type="button"
+            className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            ↗ Share
+          </button>
+        </div>
+
+        {interactionError[key] && (
+          <p className="mt-2 text-xs text-red-500">{interactionError[key]}</p>
+        )}
+
+        {openComments[key] && (
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            {commentLoading[key] && comments === undefined ? (
+              <p className="text-xs text-slate-400">Loading comments...</p>
+            ) : (
+              <div className="space-y-3">
+                {(comments || []).map((comment) => (
+                  <div key={comment._id} className="flex items-start gap-3">
+                    <img
+                      src={
+                        comment.user?.profileImage ||
+                        `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                          comment.user?.name || "User"
+                        )}&background=6366f1&color=fff`
+                      }
+                      alt={comment.user?.name || "User"}
+                      className="h-8 w-8 shrink-0 rounded-full object-cover"
+                    />
+
+                    <div className="min-w-0 flex-1 rounded-2xl bg-slate-50 px-3 py-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-xs font-bold text-slate-700">
+                          {comment.user?.name || "Unknown User"}
+                        </p>
+                        {comment.user?._id === user?._id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(comment._id, type, item._id)}
+                            className="text-[11px] font-semibold text-slate-400 transition hover:text-red-500"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-0.5 break-words text-sm text-slate-600">
+                        {comment.text}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {comments?.length === 0 && (
+                  <p className="text-xs text-slate-400">
+                    No comments yet. Start the conversation.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <form
+              onSubmit={(event) => handleAddComment(event, type, item._id)}
+              className="mt-4 flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={commentInputs[key] || ""}
+                onChange={(event) =>
+                  setCommentInputs((prev) => ({
+                    ...prev,
+                    [key]: event.target.value,
+                  }))
+                }
+                maxLength={500}
+                placeholder="Write a comment..."
+                className="min-w-0 flex-1 rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:bg-slate-100"
+              />
+              <button
+                type="submit"
+                disabled={commentLoading[key] || !commentInputs[key]?.trim()}
+                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Post
+              </button>
+            </form>
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-slate-900">
@@ -625,13 +507,13 @@ function Home() {
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-sm font-black text-white shadow-sm">
               S
             </div>
-            <div className="hidden sm:block text-left">
+            <div className="hidden text-left sm:block">
               <p className="text-base font-black tracking-tight">SST Social</p>
               <p className="text-[11px] text-slate-500">Your circle, your feed.</p>
             </div>
           </button>
 
-          <div className="hidden md:flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500 w-72">
+          <div className="hidden w-72 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500 md:flex">
             <span className="text-base">⌕</span>
             <span>Search people or posts</span>
           </div>
@@ -643,9 +525,9 @@ function Home() {
               className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 transition hover:border-slate-300 hover:shadow-sm"
             >
               <Avatar initials={getInitials(user?.name)} tone="from-indigo-500 to-violet-500" size="h-8 w-8" />
-              <span className="hidden sm:block text-sm font-semibold">{user?.name || "You"}</span>
+              <span className="hidden text-sm font-semibold sm:block">{user?.name || "You"}</span>
             </button>
-            <button onClick={handleLogout} className="hidden sm:block rounded-full px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">Logout</button>
+            <button onClick={handleLogout} className="hidden rounded-full px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 sm:block">Logout</button>
           </div>
         </div>
       </header>
@@ -671,13 +553,6 @@ function Home() {
                 <span className="text-sm font-semibold">Explore</span>
               </button>
             </div>
-
-            <div className="rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/50">Your Space</p>
-              <p className="mt-2 text-lg font-bold">Share something worth seeing.</p>
-              <p className="mt-2 text-xs leading-5 text-white/60">Create a post, upload a photo and let your people know what is happening.</p>
-              <button onClick={openCreatePost} className="mt-4 w-full rounded-2xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 transition hover:bg-slate-100">Create Post</button>
-            </div>
           </div>
         </aside>
 
@@ -691,177 +566,265 @@ function Home() {
               <button className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600">Latest ↓</button>
             </div>
             <div className="border-t border-slate-100 px-5 py-4">
+              <form onSubmit={handleCreateStory} className="mb-4 flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={storyCaption}
+                  onChange={(event) => setStoryCaption(event.target.value)}
+                  maxLength={200}
+                  placeholder="Story caption"
+                  className="min-w-0 flex-1 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 outline-none focus:bg-slate-100"
+                />
+                <label className="cursor-pointer rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                  {storyFile ? storyFile.name : "Choose Story Image"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith("image/")) {
+                        setStoryError("Please select a valid image.");
+                        event.target.value = "";
+                        return;
+                      }
+                      setStoryFile(file);
+                      setStoryError("");
+                    }}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={storyCreating}
+                  className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {storyCreating ? "Sharing..." : "Add Story"}
+                </button>
+              </form>
+
+              {storyError && <p className="mb-3 text-xs text-red-500">{storyError}</p>}
+
               {storyLoading ? (
                 <p className="text-xs text-slate-400">Loading stories...</p>
               ) : (
-                <>
-                  <div className="flex gap-4 overflow-x-auto scrollbar-hide">
-                    {storyGroups.map((group) => {
-                      const authorId = group.author?._id?.toString();
-                      const isOwnStory =
-                        authorId === user?._id?.toString();
-                      const hasStories = group.stories.length > 0;
-
-                      return (
-                        <div
-                          key={authorId || getStoryLabel(group)}
-                          className="relative flex w-[76px] shrink-0 flex-col items-center gap-2"
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              hasStories
-                                ? openStoryViewer(authorId)
-                                : isOwnStory
-                                  ? openCreateStory()
-                                  : undefined
-                            }
-                            className="group"
-                          >
-                            <div
-                              className={`rounded-full p-[3px] transition group-hover:scale-105 ${
-                                hasStories
-                                  ? "bg-gradient-to-br from-indigo-500 via-pink-500 to-orange-400"
-                                  : "bg-slate-200"
-                              }`}
-                            >
-                              <div className="rounded-full bg-white p-[2px]">
-                                {group.author?.profileImage ? (
-                                  <img
-                                    src={group.author.profileImage}
-                                    alt={group.author?.name || "Story"}
-                                    className="h-12 w-12 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <Avatar
-                                    initials={getInitials(group.author?.name)}
-                                    tone={
-                                      isOwnStory
-                                        ? "from-indigo-500 to-violet-500"
-                                        : "from-pink-500 to-violet-500"
-                                    }
-                                    size="h-12 w-12"
-                                  />
-                                )}
-                              </div>
-                            </div>
-                          </button>
-
-                          {isOwnStory && (
-                            <button
-                              type="button"
-                              onClick={openCreateStory}
-                              className="absolute right-1 top-9 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-[11px] font-black text-white"
-                              aria-label="Add story"
-                            >
-                              +
-                            </button>
-                          )}
-
-                          <span className="w-full truncate text-center text-[11px] font-semibold text-slate-600">
-                            {getStoryLabel(group)}
-                          </span>
+                <div className="flex gap-4 overflow-x-auto scrollbar-hide">
+                  {stories.map((story) => (
+                    <button
+                      key={story._id}
+                      type="button"
+                      onClick={() => setActiveStory(story)}
+                      className="group flex w-[76px] shrink-0 flex-col items-center gap-2"
+                    >
+                      <div className="rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 p-[3px] transition group-hover:scale-105">
+                        <div className="rounded-full bg-white p-[2px]">
+                          <img
+                            src={story.author?.profileImage || story.image}
+                            alt={story.author?.username || "Story"}
+                            className="h-12 w-12 rounded-full object-cover"
+                          />
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                      <span className="w-full truncate text-center text-[11px] font-semibold text-slate-600">
+                        {getStoryLabel(story)}
+                      </span>
+                    </button>
+                  ))}
 
-                  {storyError && (
-                    <p className="mt-3 text-xs text-red-500">{storyError}</p>
+                  {stories.length === 0 && (
+                    <p className="text-xs text-slate-400">No active stories yet.</p>
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>
 
-          <div className="mb-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-3">
+          {/* CREATE POST / REEL COMPOSER */}
+          <form
+            onSubmit={handleCreateContent}
+            className="mb-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start gap-3">
               <Avatar initials={getInitials(user?.name)} tone="from-indigo-500 to-violet-500" />
-              <button onClick={openCreatePost} className="flex-1 rounded-2xl bg-slate-50 px-4 py-3 text-left text-sm text-slate-400 transition hover:bg-slate-100">
-                What’s on your mind, {user?.name?.split(" ")[0] || "there"}?
+
+              <textarea
+                value={caption}
+                onChange={(event) => setCaption(event.target.value)}
+                maxLength={500}
+                rows={2}
+                placeholder={`What's on your mind, ${user?.name?.split(" ")[0] || "there"}?`}
+                className="flex-1 resize-none rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:bg-slate-100"
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => handleContentTypeChange("post")}
+                className={contentType === "post" ? "rounded-xl bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700" : "rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"}
+              >
+                ▧ Post
               </button>
-              <button onClick={openCreatePost} className="hidden rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-indigo-700 sm:block">+ Post</button>
+
+              <button
+                type="button"
+                onClick={() => handleContentTypeChange("reel")}
+                className={contentType === "reel" ? "rounded-xl bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700" : "rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"}
+              >
+                ▶ Reel
+              </button>
+
+              <label className="cursor-pointer rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">
+                {contentType === "post" ? "Choose Image" : "Choose Video"}
+                <input
+                  type="file"
+                  accept={contentType === "post" ? "image/*" : "video/*"}
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={createLoading}
+                className="ml-auto rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {createLoading ? "Creating..." : contentType === "post" ? "Create Post" : "Create Reel"}
+              </button>
             </div>
-            <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
-              <button onClick={openCreatePost} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▧ Add Image</button>
-              <button onClick={openCreateReel} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">▶ Add Reel</button>
-              <button onClick={openCreateStory} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50">＋ Add Story</button>
-            </div>
-          </div>
+
+            {selectedFile && (
+              <p className="mt-2 text-xs text-slate-500">Selected: {selectedFile.name}</p>
+            )}
+
+            {createError && (
+              <p className="mt-2 text-xs text-red-500">{createError}</p>
+            )}
+          </form>
 
           <div className="space-y-5">
-            {posts.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
-                <p className="text-lg font-black">Your feed is empty</p>
-                <p className="mt-2 text-sm text-slate-500">Create the first post and start the conversation.</p>
-                <button onClick={openCreatePost} className="mt-5 rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">Create Post</button>
+            {feedLoading && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+                Loading your feed...
               </div>
-            ) : (
-              posts.map((post) => (
-                <article key={post._id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                  <div className="flex items-center justify-between px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar initials={getInitials(post.author?.name)} tone="from-pink-500 to-violet-500" />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-bold">{post.author?.name || "User"}</p>
-                          <span className="text-xs text-slate-400">·</span>
-                          <span className="text-xs text-slate-400">{new Date(post.createdAt).toLocaleString()}</span>
-                        </div>
-                        <p className="text-xs text-slate-400">@{post.author?.username || "user"}</p>
-                      </div>
-                    </div>
-                    <button className="rounded-full px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-50">•••</button>
-                  </div>
-
-                  {post.contentType === "reel" ? (
-                    <video
-                      src={post.video}
-                      controls
-                      playsInline
-                      preload="metadata"
-                      className="aspect-[4/3] w-full bg-black object-contain"
-                    />
-                  ) : (
-                    post.image && <img src={post.image} alt="" className="aspect-[4/3] w-full object-cover" />
-                  )}
-
-                  <div className="px-5 pb-5 pt-4">
-                    <p className="text-sm leading-6 text-slate-700">{post.caption}</p>
-                    <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-                      <span>{post.likes?.length || 0} likes</span>
-                      <button
-                        onClick={() => openComments(post)}
-                        className="transition hover:text-slate-700"
-                      >
-                        {commentsOpen && activeContent?._id === post._id
-                          ? `${comments.length} ${comments.length === 1 ? "comment" : "comments"}`
-                          : "View comments"}
-                      </button>
-                    </div>
-                    <div className="mt-4 flex border-t border-slate-100 pt-3">
-                      <button
-                        onClick={() => handleLike(post)}
-                        className={`flex-1 rounded-xl py-2 text-sm font-semibold transition hover:bg-slate-50 ${
-                          post.likes?.some((id) => (typeof id === "string" ? id : id?._id) === user?._id)
-                            ? "text-red-500"
-                            : "text-slate-600"
-                        }`}
-                      >
-                        {post.likes?.some((id) => (typeof id === "string" ? id : id?._id) === user?._id) ? "♥ Liked" : "♡ Like"}
-                      </button>
-                      <button
-                        onClick={() => openComments(post)}
-                        className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-                      >
-                        ◌ Comment
-                      </button>
-                      <button className="flex-1 rounded-xl py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50">↗ Share</button>
-                    </div>
-                  </div>
-                </article>
-              ))
             )}
+
+            {!feedLoading && feedError && (
+              <div className="rounded-3xl border border-red-100 bg-red-50 p-5 text-sm text-red-600 shadow-sm">
+                {feedError}
+              </div>
+            )}
+
+            {!feedLoading && !feedError && posts.length === 0 && reels.length === 0 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+                <p className="font-bold text-slate-700">Your feed is empty</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Create a post or reel to get started.
+                </p>
+              </div>
+            )}
+
+            {/* POSTS: render real API data returned by GET /post. */}
+            {posts.map((post) => (
+              <article
+                key={post._id}
+                className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+              >
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={
+                        post.author?.profileImage ||
+                        `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                          post.author?.name || "User"
+                        )}&background=6366f1&color=fff`
+                      }
+                      alt={post.author?.name || "User"}
+                      className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-white"
+                    />
+                    <div>
+                      <p className="text-sm font-bold">
+                        {post.author?.name || "Unknown User"}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        @{post.author?.username || "user"} ·{" "}
+                        {new Date(post.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <button className="rounded-full px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-50">
+                    •••
+                  </button>
+                </div>
+
+                {post.image && (
+                  <img
+                    src={post.image}
+                    alt={post.caption || "Post"}
+                    className="max-h-[620px] w-full object-cover"
+                  />
+                )}
+
+                <div className="px-5 pb-5 pt-4">
+                  <p className="text-sm leading-6 text-slate-700">
+                    {post.caption}
+                  </p>
+
+                  {renderInteractions(post, "post")}
+                </div>
+              </article>
+            ))}
+
+            {/* REELS: render real API data returned by GET /reel. */}
+            {reels.map((reel) => (
+              <article
+                key={reel._id}
+                className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+              >
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={
+                        reel.author?.profileImage ||
+                        `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                          reel.author?.name || "User"
+                        )}&background=6366f1&color=fff`
+                      }
+                      alt={reel.author?.name || "User"}
+                      className="h-11 w-11 shrink-0 rounded-full object-cover ring-2 ring-white"
+                    />
+                    <div>
+                      <p className="text-sm font-bold">
+                        {reel.author?.name || "Unknown User"}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        @{reel.author?.username || "user"} ·{" "}
+                        {new Date(reel.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <button className="rounded-full px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-50">
+                    •••
+                  </button>
+                </div>
+
+                {reel.video && (
+                  <video
+                    src={reel.video}
+                    controls
+                    className="max-h-[620px] w-full bg-black object-contain"
+                  />
+                )}
+
+                <div className="px-5 pb-5 pt-4">
+                  <p className="text-sm leading-6 text-slate-700">
+                    {reel.caption}
+                  </p>
+
+                  {renderInteractions(reel, "reel")}
+                </div>
+              </article>
+            ))}
           </div>
         </section>
 
@@ -889,480 +852,51 @@ function Home() {
                 ))}
               </div>
             </div>
-
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Quick stats</p>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-2xl bg-slate-50 p-3"><p className="text-lg font-black">{posts.length}</p><p className="text-[10px] text-slate-400">Posts</p></div>
-                <div className="rounded-2xl bg-slate-50 p-3"><p className="text-lg font-black">{user?.followers?.length || 0}</p><p className="text-[10px] text-slate-400">Followers</p></div>
-                <div className="rounded-2xl bg-slate-50 p-3"><p className="text-lg font-black">{user?.followings?.length || 0}</p><p className="text-[10px] text-slate-400">Following</p></div>
-              </div>
-            </div>
           </div>
         </aside>
       </main>
 
-      {isStoryCreateOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-[30px] bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-              <div>
-                <h2 className="text-lg font-black">Create Story</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Your story will be visible for 24 hours.
-                </p>
+      {activeStory && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setActiveStory(null)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-3xl bg-black shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between bg-black px-4 py-3 text-white">
+              <div className="flex items-center gap-3">
+                <img
+                  src={activeStory.author?.profileImage || activeStory.image}
+                  alt={activeStory.author?.username || "Story"}
+                  className="h-9 w-9 rounded-full object-cover"
+                />
+                <div>
+                  <p className="text-sm font-bold">{getStoryLabel(activeStory)}</p>
+                  <p className="text-[11px] text-white/60">
+                    {new Date(activeStory.createdAt).toLocaleString()}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={closeCreateStory}
-                disabled={storySubmitting}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50"
+                onClick={() => setActiveStory(null)}
+                className="rounded-full px-3 py-1 text-xl text-white/80 hover:bg-white/10"
               >
-                ✕
+                ×
               </button>
-            </div>
-
-            <form onSubmit={handleCreateStory} className="p-6">
-              {storyError && (
-                <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-                  {storyError}
-                </div>
-              )}
-
-              {storyPreview ? (
-                <div className="relative overflow-hidden rounded-3xl bg-slate-950">
-                  <img
-                    src={storyPreview}
-                    alt="Story preview"
-                    className="max-h-[480px] w-full object-contain"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (storyPreview) URL.revokeObjectURL(storyPreview);
-                      setStoryPreview("");
-                      setSelectedStoryImage(null);
-                      if (storyInputRef.current) storyInputRef.current.value = "";
-                    }}
-                    className="absolute right-3 top-3 rounded-full bg-black/65 px-3 py-1.5 text-xs font-bold text-white"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center hover:border-indigo-300 hover:bg-indigo-50/40">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-xl shadow-sm">
-                    ◫
-                  </span>
-                  <span className="mt-3 text-sm font-bold text-slate-700">
-                    Choose a story image
-                  </span>
-                  <span className="mt-1 text-xs text-slate-400">
-                    PNG, JPG or WEBP up to 5MB
-                  </span>
-                  <input
-                    ref={storyInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleStoryImageChange}
-                    className="hidden"
-                  />
-                </label>
-              )}
-
-              <textarea
-                value={storyCaption}
-                onChange={(event) => setStoryCaption(event.target.value)}
-                maxLength={300}
-                rows={3}
-                placeholder="Add a caption (optional)"
-                className="mt-4 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:bg-white"
-              />
-
-              <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-                <span>{selectedStoryImage?.name || "No image selected"}</span>
-                <span>{storyCaption.length}/300</span>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
-                <button
-                  type="button"
-                  onClick={closeCreateStory}
-                  disabled={storySubmitting}
-                  className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!selectedStoryImage || storySubmitting}
-                  className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {storySubmitting ? "Publishing..." : "Publish Story"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {activeStory && activeStoryGroup && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/95 px-3 py-4">
-          <div className="relative flex h-full max-h-[860px] w-full max-w-md flex-col overflow-hidden rounded-[30px] bg-black shadow-2xl">
-            <div className="absolute left-0 right-0 top-0 z-20 p-4">
-              <div className="flex gap-1">
-                {activeStoryGroup.stories.map((story, index) => (
-                  <div
-                    key={story._id}
-                    className={`h-1 flex-1 rounded-full ${
-                      index <= activeStoryIndex ? "bg-white" : "bg-white/30"
-                    }`}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-4 flex items-center justify-between text-white">
-                <div className="flex items-center gap-3">
-                  {activeStoryGroup.author?.profileImage ? (
-                    <img
-                      src={activeStoryGroup.author.profileImage}
-                      alt={activeStoryGroup.author?.name || "Story"}
-                      className="h-9 w-9 rounded-full object-cover ring-2 ring-white/70"
-                    />
-                  ) : (
-                    <Avatar
-                      initials={getInitials(activeStoryGroup.author?.name)}
-                      tone="from-indigo-500 to-violet-500"
-                      size="h-9 w-9"
-                    />
-                  )}
-
-                  <div>
-                    <p className="text-sm font-bold">
-                      {activeStoryGroup.author?.name || "User"}
-                    </p>
-                    <p className="text-[11px] text-white/60">
-                      @{activeStoryGroup.author?.username || "user"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {activeStory.author?._id?.toString() === user?._id?.toString() && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteStory(activeStory._id)}
-                      className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-500/80"
-                    >
-                      Delete
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={closeStoryViewer}
-                    className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
             </div>
 
             <img
               src={activeStory.image}
               alt={activeStory.caption || "Story"}
-              className="h-full w-full object-contain"
+              className="max-h-[75vh] w-full bg-black object-contain"
             />
 
-            <button
-              type="button"
-              onClick={showPreviousStory}
-              className="absolute bottom-20 left-3 top-24 z-10 w-1/3 text-left text-3xl text-white/70"
-              aria-label="Previous story"
-            >
-              ‹
-            </button>
-
-            <button
-              type="button"
-              onClick={showNextStory}
-              className="absolute bottom-20 right-3 top-24 z-10 w-1/3 text-right text-3xl text-white/70"
-              aria-label="Next story"
-            >
-              ›
-            </button>
-
-            {(activeStory.caption || activeStory.createdAt) && (
-              <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-5 pb-6 pt-16 text-white">
-                {activeStory.caption && (
-                  <p className="text-sm leading-6">{activeStory.caption}</p>
-                )}
-                <p className="mt-2 text-[11px] text-white/55">
-                  {new Date(activeStory.createdAt).toLocaleString()}
-                </p>
-              </div>
+            {activeStory.caption && (
+              <p className="bg-black px-4 py-4 text-sm text-white">{activeStory.caption}</p>
             )}
-          </div>
-        </div>
-      )}
-
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm">
-          <div className="w-full max-w-2xl overflow-hidden rounded-[32px] border border-white/20 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-sm font-black text-white">
-                    S
-                  </div>
-                  <h2 className="text-lg font-black tracking-tight">
-                    {createType === "reel" ? "Create a Reel" : "Create a Post"}
-                  </h2>
-                </div>
-                <p className="mt-1 pl-11 text-xs text-slate-500">
-                  {createType === "reel"
-                    ? "Share a short video with your circle."
-                    : "Share a moment with your circle."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeCreatePost}
-                disabled={postLoading || reelLoading}
-                className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={createType === "reel" ? handleCreateReel : handleCreatePost} className="p-6">
-              <div className="flex items-center gap-3">
-                <Avatar initials={getInitials(user?.name)} tone="from-indigo-500 to-violet-500" />
-                <div className="min-w-0">
-                  <p className="text-sm font-bold">{user?.name || "You"}</p>
-                  <p className="text-xs text-slate-400">@{user?.username || "you"}</p>
-                </div>
-              </div>
-
-              {postError && (
-                <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-                  {postError}
-                </div>
-              )}
-
-              <div className="mt-5">
-                {createType === "reel" ? (
-                  <>
-                    <textarea
-                      value={reelCaption}
-                      onChange={(event) => setReelCaption(event.target.value)}
-                      maxLength={500}
-                      rows={4}
-                      placeholder="What do you want people to see?"
-                      className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                    />
-
-                    {reelPreview ? (
-                      <div className="mt-4 relative overflow-hidden rounded-2xl bg-slate-950">
-                        <video src={reelPreview} controls className="max-h-96 w-full object-contain" />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (reelPreview) URL.revokeObjectURL(reelPreview);
-                            setReelPreview("");
-                            setSelectedReel(null);
-                            if (reelInputRef.current) reelInputRef.current.value = "";
-                          }}
-                          className="absolute right-3 top-3 rounded-full bg-black/65 px-3 py-1.5 text-xs font-bold text-white backdrop-blur"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40">
-                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-lg shadow-sm">▶</span>
-                        <span className="mt-3 text-sm font-bold text-slate-700">Add your reel</span>
-                        <span className="mt-1 text-xs text-slate-400">MP4, MOV or another video up to 50MB</span>
-                        <input ref={reelInputRef} type="file" accept="video/*" onChange={handleReelChange} className="hidden" />
-                      </label>
-                    )}
-
-                    <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                      <span>{selectedReel ? selectedReel.name : "No video selected"}</span>
-                      <span>{reelCaption.length}/500</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <textarea
-                      value={caption}
-                      onChange={(event) => setCaption(event.target.value)}
-                      maxLength={500}
-                      rows={5}
-                      placeholder="What’s on your mind?"
-                      className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                    />
-
-                    {previewImage ? (
-                      <div className="relative mt-4 overflow-hidden rounded-2xl bg-slate-100">
-                        <img src={previewImage} alt="Post preview" className="max-h-96 w-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (previewImage) URL.revokeObjectURL(previewImage);
-                            setPreviewImage("");
-                            setSelectedImage(null);
-                            if (fileInputRef.current) fileInputRef.current.value = "";
-                          }}
-                          className="absolute right-3 top-3 rounded-full bg-black/65 px-3 py-1.5 text-xs font-bold text-white backdrop-blur"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40">
-                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-lg shadow-sm">▧</span>
-                        <span className="mt-3 text-sm font-bold text-slate-700">Add an image</span>
-                        <span className="mt-1 text-xs text-slate-400">PNG, JPG or WEBP up to 5MB</span>
-                        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                      </label>
-                    )}
-
-                    <div className="mt-3 flex items-center justify-end text-xs text-slate-400">
-                      <span>{caption.length}/500</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="mt-6 border-t border-slate-100 pt-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Add to your post</span>
-                    <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:block" />
-                    <button
-                      type="button"
-                      onClick={createType === "reel" ? openCreateReel : openCreatePost}
-                      className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                    >
-                      {createType === "reel" ? "Video" : "Image"}
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={closeCreatePost}
-                      disabled={postLoading || reelLoading}
-                      className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={postLoading || reelLoading}
-                      className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {postLoading || reelLoading
-                        ? "Publishing..."
-                        : createType === "reel"
-                          ? "Publish Reel"
-                          : "Publish Post"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {commentsOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/60 px-0 sm:items-center sm:px-4">
-          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-white sm:rounded-3xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <p className="text-sm font-black">Comments</p>
-                <p className="text-xs text-slate-400">{comments.length} comments</p>
-              </div>
-              <button
-                onClick={closeComments}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {commentsLoading ? (
-                <p className="py-10 text-center text-sm text-slate-400">
-                  Loading comments...
-                </p>
-              ) : comments.length === 0 ? (
-                <div className="py-10 text-center">
-                  <p className="text-sm font-bold text-slate-700">No comments yet</p>
-                  <p className="mt-1 text-xs text-slate-400">Be the first to say something.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {comments.map((comment) => (
-                    <div key={comment._id} className="flex gap-3">
-                      <Avatar
-                        initials={getInitials(comment.user?.name)}
-                        tone="from-pink-500 to-violet-500"
-                        size="h-9 w-9"
-                      />
-                      <div className="min-w-0 flex-1 rounded-2xl bg-slate-50 px-4 py-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-xs font-bold">
-                            {comment.user?.name || "User"}
-                            <span className="ml-1 font-normal text-slate-400">
-                              @{comment.user?.username || "user"}
-                            </span>
-                          </p>
-                          {comment.user?._id === user?._id && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteComment(comment._id)}
-                              className="text-[11px] font-semibold text-slate-400 transition hover:text-red-500"
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                        <p className="mt-1 text-sm leading-5 text-slate-700">
-                          {comment.text}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <form onSubmit={handleAddComment} className="border-t border-slate-100 p-4">
-              <div className="flex items-center gap-2">
-                <Avatar
-                  initials={getInitials(user?.name)}
-                  tone="from-indigo-500 to-violet-500"
-                  size="h-9 w-9"
-                />
-                <input
-                  value={commentText}
-                  onChange={(event) => setCommentText(event.target.value)}
-                  maxLength={500}
-                  placeholder="Write a comment..."
-                  className="min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white"
-                />
-                <button
-                  type="submit"
-                  disabled={!commentText.trim() || commentSubmitting}
-                  className="rounded-full bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  {commentSubmitting ? "..." : "Post"}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
