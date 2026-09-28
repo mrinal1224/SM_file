@@ -3,6 +3,7 @@ import uploadReel from "../middlewares/reelUpload.middleware.js";
 import {
     createReel,
     getReels,
+    getReelsByUsername,
     toggleReelLike
 } from "../controllers/reel.controllers.js";
 import isAuthenticated from "../middlewares/authMiddleware.js";
@@ -20,6 +21,12 @@ reelRoutes.get(
     "/",
     isAuthenticated,
     getReels
+);
+
+reelRoutes.get(
+    "/user/:username",
+    isAuthenticated,
+    getReelsByUsername
 );
 
 reelRoutes.patch(
