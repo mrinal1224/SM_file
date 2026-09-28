@@ -1,12 +1,25 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useDispatch, useSelector } from 'react-redux'
 import axiosInstance from '../axiosCalls/axios'
 import { useAuth } from '../context/AuthContext'
+import {
+    replaceUserPosts,
+    updatePostLike
+} from '../redux/postsSlice'
 
 function Profile() {
     const { username } = useParams()
     const navigate = useNavigate()
     const { user: loggedInUser, setUser } = useAuth()
+
+    // REDUX STEP 9: PROFILE READS THE SAME STORE AS HOME
+    //
+    // Profile no longer owns a second independent "profilePosts" array.
+    // Both Home and Profile now read Post entities from state.posts.items.
+    const dispatch = useDispatch()
+    const allPosts = useSelector((state) => state.posts.items)
+
     const [userData, setUserData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [isFollowing, setIsFollowing] = useState(false)
@@ -17,7 +30,6 @@ function Profile() {
     const [previewImage, setPreviewImage] = useState('')
     const [editError, setEditError] = useState('')
     const [editLoading, setEditLoading] = useState(false)
-    const [profilePosts, setProfilePosts] = useState([])
     const [postsLoading, setPostsLoading] = useState(true)
     const [postsError, setPostsError] = useState('')
     const [likeLoading, setLikeLoading] = useState({})
@@ -27,14 +39,15 @@ function Profile() {
     const [reelsError, setReelsError] = useState('')
     const fileInputRef = useRef(null)
 
-    // REDUX TEACHING POINT:
-    // Home.jsx already keeps the feed in its own local "posts" state.
-    // Profile.jsx now keeps some of those SAME Post documents again in "profilePosts".
-    // If Post #123 is liked here, this local copy changes, but Home's local copy does not.
-    // If it is liked on Home, this copy does not know about that change either.
-    // The backend has one Post #123, but the frontend can now hold multiple unsynchronised copies.
-    // Do NOT fix this with Redux yet — this duplication is intentional so the next class can
-    // move shared post state into a single Redux store and demonstrate the problem Redux solves.
+    // REDUX RESULT:
+    // Home and Profile no longer keep separate Post arrays.
+    //
+    // allPosts comes from one Redux store.
+    // profilePosts below is DERIVED from that shared collection.
+    // We are not creating another source of truth.
+    const profilePosts = allPosts.filter(
+        (post) => post.author?.username === username
+    )
 
     const isOwnProfile = loggedInUser?.username === username
 
@@ -80,7 +93,12 @@ function Profile() {
                 setPostsError('')
 
                 const response = await axiosInstance.get(`/posts/user/${username}`)
-                setProfilePosts(response.data.posts || [])
+
+                // REDUX STEP 10: MERGE PROFILE RESPONSE INTO SHARED POSTS
+                //
+                // Profile may fetch fresh data from the server, but the result
+                // goes into the SAME Redux collection used by Home.
+                dispatch(replaceUserPosts(response.data.posts || []))
             } catch (error) {
                 console.error("Failed to fetch profile posts:", error)
                 setPostsError(
@@ -92,7 +110,7 @@ function Profile() {
         }
 
         fetchProfilePosts()
-    }, [username])
+    }, [username, dispatch])
 
     useEffect(() => {
         const fetchProfileReels = async () => {
@@ -131,25 +149,15 @@ function Profile() {
 
             const response = await axiosInstance.patch(`/posts/${postId}/like`)
 
-            // REDUX TEACHING POINT:
-            // We are updating ONLY Profile.jsx's copy of this post.
-            // Home.jsx may already have the same post inside its own local state, and that copy
-            // will stay stale until Home fetches again. Next class: centralise shared posts in Redux.
-            setProfilePosts((prev) =>
-                prev.map((post) => {
-                    if (post._id !== postId) return post
-
-                    const myId = loggedInUser?._id
-                    const currentLikes = post.likes || []
-
-                    return {
-                        ...post,
-                        likes: response.data.liked
-                            ? [...currentLikes, myId]
-                            : currentLikes.filter(
-                                (id) => (id?._id || id)?.toString() !== myId?.toString()
-                            )
-                    }
+            // REDUX STEP 11: ONE LIKE ACTION, ONE SHARED STATE UPDATE
+            //
+            // We no longer call setProfilePosts(...).
+            // Updating Redux means Home and Profile observe the same Post state.
+            dispatch(
+                updatePostLike({
+                    postId,
+                    userId: loggedInUser?._id,
+                    liked: response.data.liked
                 })
             )
         } catch (error) {
