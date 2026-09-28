@@ -2,6 +2,7 @@ import express from "express";
 import {
     createPost,
     getFeed,
+    getPostsByUsername,
     togglePostLike
 } from "../controllers/post.controllers.js";
 import isAuthenticated from "../middlewares/authMiddleware.js";
@@ -20,6 +21,12 @@ postRoutes.get(
     "/feed",
     isAuthenticated,
     getFeed
+);
+
+postRoutes.get(
+    "/user/:username",
+    isAuthenticated,
+    getPostsByUsername
 );
 
 postRoutes.patch(
