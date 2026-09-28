@@ -783,7 +783,7 @@ function Home() {
               </div>
             )}
 
-            {/* POSTS: render real API data returned by GET /post. */}
+            {/* POSTS: render real API data returned by GET /posts/feed. */}
             {posts.map((post) => (
               <article
                 key={post._id}
@@ -834,7 +834,7 @@ function Home() {
               </article>
             ))}
 
-            {/* REELS: render real API data returned by GET /reel. */}
+            {/* REELS: render real API data returned by GET /reels. */}
             {reels.map((reel) => (
               <article
                 key={reel._id}
