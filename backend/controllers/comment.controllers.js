@@ -19,13 +19,11 @@ export const getComments = async (req, res, next) => {
             });
         }
 
-        // Fetch the content itself because its author becomes the notification
-        // recipient after the comment is successfully created.
-        const content = type === "post"
-            ? await Post.findById(id)
-            : await Reel.findById(id);
+        const exists = type === "post"
+            ? await Post.exists({ _id: id })
+            : await Reel.exists({ _id: id });
 
-        if (!content) {
+        if (!exists) {
             return res.status(404).json({
                 message: "Content not found"
             });
@@ -65,11 +63,12 @@ export const createComment = async (req, res, next) => {
             });
         }
 
-        const exists = type === "post"
-            ? await Post.exists({ _id: id })
-            : await Reel.exists({ _id: id });
+        // Fetch the content because its author is the notification recipient.
+        const content = type === "post"
+            ? await Post.findById(id)
+            : await Reel.findById(id);
 
-        if (!exists) {
+        if (!content) {
             return res.status(404).json({
                 message: "Content not found"
             });
