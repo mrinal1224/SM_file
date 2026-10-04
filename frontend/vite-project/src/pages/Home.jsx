@@ -5,11 +5,11 @@ import axiosInstance from "../axiosCalls/axios";
 import { useAuth } from "../context/AuthContext";
 import {
   addPost,
-  setPosts,
-  setPostsError,
-  setPostsLoading,
+  fetchFeedPosts,
   updatePostLike,
 } from "../redux/postsSlice";
+import { addReel, fetchReels, updateReelLike } from "../redux/reelsSlice";
+import { addStory, fetchStories } from "../redux/storiesSlice";
 
 function Avatar({ initials, tone = "from-slate-700 to-slate-900", size = "h-11 w-11" }) {
   return (
@@ -38,13 +38,12 @@ function Home() {
   const postsLoading = useSelector((state) => state.posts.loading);
   const postsError = useSelector((state) => state.posts.error);
 
-  // Reels are still local state because this lesson is specifically about
-  // solving shared Post state. We should not put everything in Redux blindly.
-  const [reels, setReels] = useState([]);
-  const [reelsLoading, setReelsLoading] = useState(true);
-  const [reelsError, setReelsError] = useState("");
-  const [stories, setStories] = useState([]);
-  const [storyLoading, setStoryLoading] = useState(true);
+  const reels = useSelector((state) => state.reels.items);
+  const reelsLoading = useSelector((state) => state.reels.loading);
+  const reelsError = useSelector((state) => state.reels.error);
+  const stories = useSelector((state) => state.stories.items);
+  const storyLoading = useSelector((state) => state.stories.loading);
+  const storyStoreError = useSelector((state) => state.stories.error);
   const [storyError, setStoryError] = useState("");
   const [storyFile, setStoryFile] = useState(null);
   const [storyCaption, setStoryCaption] = useState("");
@@ -79,78 +78,13 @@ function Home() {
     );
   };
 
-  // REDUX STEP 6: FETCH POSTS INTO THE GLOBAL STORE
-  //
-  // The API call still exists. Redux does NOT replace the backend.
-  // The important difference is WHERE the response is stored.
-  //
-  // BEFORE:
-  // GET /posts/feed -> setPosts(...) -> Home local state
-  //
-  // NOW:
-  // GET /posts/feed -> dispatch(setPosts(...)) -> Redux store
+  // Home hydrates shared server resources into Redux. The same entities are
+  // then reused by Profile instead of creating page-specific copies.
   useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        dispatch(setPostsLoading(true));
-        dispatch(setPostsError(""));
-
-        const response = await axiosInstance.get("/posts/feed");
-
-        // This action updates state.posts.items inside Redux.
-        dispatch(setPosts(response.data.posts || []));
-      } catch (error) {
-        console.error("Posts fetch failed:", error);
-        dispatch(
-          setPostsError(
-            error.response?.data?.message || "Unable to load posts."
-          )
-        );
-      } finally {
-        dispatch(setPostsLoading(false));
-      }
-    };
-
-    const fetchReels = async () => {
-      try {
-        setReelsLoading(true);
-        setReelsError("");
-
-        const response = await axiosInstance.get("/reels");
-        setReels(response.data.reels || []);
-      } catch (error) {
-        console.error("Reels fetch failed:", error);
-        setReelsError(
-          error.response?.data?.message || "Unable to load reels."
-        );
-      } finally {
-        setReelsLoading(false);
-      }
-    };
-
-    fetchPosts();
-    fetchReels();
+    dispatch(fetchFeedPosts());
+    dispatch(fetchReels());
+    dispatch(fetchStories());
   }, [dispatch]);
-
-  // STORIES:
-  // Fetch active stories from people the current user follows.
-  useEffect(() => {
-    const fetchStories = async () => {
-      try {
-        setStoryLoading(true);
-        setStoryError("");
-        const response = await axiosInstance.get("/stories/getStories");
-        setStories(response.data.stories || []);
-      } catch (error) {
-        console.error("Stories fetch failed:", error);
-        setStoryError(error.response?.data?.message || "Unable to load stories.");
-      } finally {
-        setStoryLoading(false);
-      }
-    };
-
-    fetchStories();
-  }, []);
 
   const handleCreateStory = async (event) => {
     event.preventDefault();
@@ -169,7 +103,7 @@ function Home() {
       formData.append("image", storyFile);
 
       const response = await axiosInstance.post("/stories/createStory", formData);
-      setStories((prevStories) => [response.data.story, ...prevStories]);
+      dispatch(addStory(response.data.story));
       setStoryFile(null);
       setStoryCaption("");
       event.target.reset();
@@ -224,7 +158,7 @@ function Home() {
         dispatch(addPost(response.data.post));
       } else {
         const response = await axiosInstance.post("/reels", formData);
-        setReels((prevReels) => [response.data.reel, ...prevReels]);
+        dispatch(addReel(response.data.reel));
       }
 
       setCaption("");
@@ -302,25 +236,7 @@ function Home() {
           })
         );
       } else {
-        // Reels are intentionally still handled with component state.
-        setReels((items) =>
-          items.map((item) => {
-            if (item._id !== id) return item;
-
-            const currentLikes = item.likes || [];
-            const likesWithoutCurrentUser = currentLikes.filter(
-              (like) => getLikeId(like)?.toString() !== user?._id?.toString()
-            );
-
-            return {
-              ...item,
-              likes:
-                liked && user?._id
-                  ? [...likesWithoutCurrentUser, user._id]
-                  : likesWithoutCurrentUser,
-            };
-          })
-        );
+        dispatch(updateReelLike({ reelId: id, userId: user?._id, liked }));
       }
     } catch (error) {
       console.error("Like update failed:", error);
@@ -662,7 +578,7 @@ function Home() {
                 </button>
               </form>
 
-              {storyError && <p className="mb-3 text-xs text-red-500">{storyError}</p>}
+              {(storyError || storyStoreError) && <p className="mb-3 text-xs text-red-500">{storyError || storyStoreError}</p>}
 
               {storyLoading ? (
                 <p className="text-xs text-slate-400">Loading stories...</p>
