@@ -3,10 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import axiosInstance from '../axiosCalls/axios'
 import { useAuth } from '../context/AuthContext'
-import {
-    replaceUserPosts,
-    updatePostLike
-} from '../redux/postsSlice'
+import { fetchPostsByUsername, selectPostsByUsername, updatePostLike } from '../redux/postsSlice'
+import { fetchReelsByUsername, selectReelsByUsername } from '../redux/reelsSlice'
+import { fetchProfileByUsername, removeProfileKey, selectProfileByUsername, upsertProfile } from '../redux/profilesSlice'
 
 function Profile() {
     const { username } = useParams()
@@ -18,10 +17,15 @@ function Profile() {
     // Profile no longer owns a second independent "profilePosts" array.
     // Both Home and Profile now read Post entities from state.posts.items.
     const dispatch = useDispatch()
-    const allPosts = useSelector((state) => state.posts.items)
+    const userData = useSelector((state) => selectProfileByUsername(state, username))
+    const loading = useSelector((state) => state.profiles.loadingByUsername[username] ?? true)
+    const profilePosts = useSelector((state) => selectPostsByUsername(state, username))
+    const postsLoading = useSelector((state) => state.posts.loading)
+    const postsError = useSelector((state) => state.posts.error)
+    const profileReels = useSelector((state) => selectReelsByUsername(state, username))
+    const reelsLoading = useSelector((state) => state.reels.loading)
+    const reelsError = useSelector((state) => state.reels.error)
 
-    const [userData, setUserData] = useState(null)
-    const [loading, setLoading] = useState(true)
     const [isFollowing, setIsFollowing] = useState(false)
     const [actionLoading, setActionLoading] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)
@@ -30,108 +34,31 @@ function Profile() {
     const [previewImage, setPreviewImage] = useState('')
     const [editError, setEditError] = useState('')
     const [editLoading, setEditLoading] = useState(false)
-    const [postsLoading, setPostsLoading] = useState(true)
-    const [postsError, setPostsError] = useState('')
     const [likeLoading, setLikeLoading] = useState({})
-    const [profileReels, setProfileReels] = useState([])
     const [activeContentTab, setActiveContentTab] = useState('posts')
-    const [reelsLoading, setReelsLoading] = useState(true)
-    const [reelsError, setReelsError] = useState('')
     const fileInputRef = useRef(null)
-
-    // REDUX RESULT:
-    // Home and Profile no longer keep separate Post arrays.
-    //
-    // allPosts comes from one Redux store.
-    // profilePosts below is DERIVED from that shared collection.
-    // We are not creating another source of truth.
-    const profilePosts = allPosts.filter(
-        (post) => post.author?.username === username
-    )
 
     const isOwnProfile = loggedInUser?.username === username
 
-    const fetchProfile = async () => {
-        try {
-            const user = await axiosInstance.get(`/users/profile/${username}`)
-            setUserData(user.data.userData)
-            return user.data.userData
-        } catch (error) {
-            console.error("Failed to fetch profile data:", error)
-            return null
-        }
-    }
-
+    // Every route hydrates the same Redux store. A hard refresh therefore
+    // rebuilds exactly the server state this profile needs.
     useEffect(() => {
-        const loadProfile = async () => {
-            try {
-                setLoading(true)
-
-                const profile = await fetchProfile()
-                if (!profile || isOwnProfile) return
-
-                const meResponse = await axiosInstance.get('/users/me')
-                const myFollowingList = meResponse.data.followings || []
-
-                setIsFollowing(
-                    myFollowingList.some(
-                        (id) => id.toString() === profile._id.toString()
-                    )
-                )
-            } finally {
-                setLoading(false)
-            }
-        }
-
-        loadProfile()
-    }, [username, isOwnProfile])
-
-    useEffect(() => {
-        const fetchProfilePosts = async () => {
-            try {
-                setPostsLoading(true)
-                setPostsError('')
-
-                const response = await axiosInstance.get(`/posts/user/${username}`)
-
-                // REDUX STEP 10: MERGE PROFILE RESPONSE INTO SHARED POSTS
-                //
-                // Profile may fetch fresh data from the server, but the result
-                // goes into the SAME Redux collection used by Home.
-                dispatch(replaceUserPosts(response.data.posts || []))
-            } catch (error) {
-                console.error("Failed to fetch profile posts:", error)
-                setPostsError(
-                    error.response?.data?.message || "Unable to load posts."
-                )
-            } finally {
-                setPostsLoading(false)
-            }
-        }
-
-        fetchProfilePosts()
+        dispatch(fetchProfileByUsername(username))
+        dispatch(fetchPostsByUsername(username))
+        dispatch(fetchReelsByUsername(username))
     }, [username, dispatch])
 
     useEffect(() => {
-        const fetchProfileReels = async () => {
-            try {
-                setReelsLoading(true)
-                setReelsError('')
-
-                const response = await axiosInstance.get(`/reels/user/${username}`)
-                setProfileReels(response.data.reels || [])
-            } catch (error) {
-                console.error("Failed to fetch profile reels:", error)
-                setReelsError(
-                    error.response?.data?.message || "Unable to load reels."
-                )
-            } finally {
-                setReelsLoading(false)
-            }
+        if (!userData || isOwnProfile) {
+            setIsFollowing(false)
+            return
         }
 
-        fetchProfileReels()
-    }, [username])
+        const followingIds = loggedInUser?.followings || []
+        setIsFollowing(
+            followingIds.some((item) => (item?._id || item)?.toString() === userData._id?.toString())
+        )
+    }, [userData, isOwnProfile, loggedInUser])
 
     useEffect(() => {
         return () => {
@@ -178,7 +105,7 @@ function Profile() {
             }
 
             setIsFollowing((prev) => !prev)
-            await fetchProfile()
+            dispatch(fetchProfileByUsername(username))
         } catch (error) {
             console.error("Follow action failed:", error)
             alert(error.response?.data?.message || "Something went wrong")
@@ -274,7 +201,7 @@ function Profile() {
 
             const updatedUser = response.data.user
 
-            setUserData(updatedUser)
+            dispatch(upsertProfile(updatedUser))
             setUser({
                 ...loggedInUser,
                 ...updatedUser
@@ -285,6 +212,7 @@ function Profile() {
             closeEditProfile()
 
             if (usernameChanged) {
+                dispatch(removeProfileKey(username))
                 navigate(`/profile/${updatedUser.username}`, { replace: true })
             }
         } catch (error) {
