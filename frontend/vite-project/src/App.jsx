@@ -1,5 +1,4 @@
 import './App.css'
-import { useEffect } from 'react'
 import Login from './pages/Login.jsx'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import SignUp from './pages/SignUp'
@@ -9,74 +8,16 @@ import { AuthProvider } from './context/AuthContext'
 import PublicRoute from './components/PublicRoute'
 import ProtectedRoute from './components/ProtectedRoute'
 import Profile from './pages/Profile'
-import socket from './socket.js'
+import SocketManager from './components/SocketManager'
 
 
 function App() {
-
-  // SOCKET.IO STEP 2: START THE CLIENT CONNECTION
-  //
-  // We keep the socket connection at the App level so it is not recreated
-  // every time the user changes from Home to Profile or another route.
-  useEffect(() => {
-
-    // These functions run when Socket.IO tells us that the connection
-    // has been established or disconnected.
-    const handleConnect = () => {
-      console.log('Socket connected:', socket.id)
-
-      // SOCKET.IO STEP 3: SEND OUR FIRST CUSTOM EVENT
-      //
-      // "hello" is our own event name. The second argument is the data
-      // that will travel from this browser to the server.
-      socket.emit('hello', 'Hello from the client!')
-    }
-
-    const handleDisconnect = () => {
-      console.log('Socket disconnected')
-    }
-
-    // Listen for the custom event that the server sends back.
-    const handleHelloResponse = (message) => {
-      console.log('Server says:', message)
-    }
-
-    // SOCKET.IO STEP 5: LISTEN FOR AN EVENT SENT TO OUR USER ROOM
-    //
-    // The browser does not decide which room it belongs to.
-    // The authenticated server joined this socket to the correct user room.
-    // If this event arrives, it proves targeted room delivery is working.
-    const handleRoomTest = (data) => {
-      console.log('User room event:', data.message)
-    }
-
-    // Register listeners BEFORE calling connect().
-    // This way we are already listening when the first connection succeeds.
-    socket.on('connect', handleConnect)
-    socket.on('disconnect', handleDisconnect)
-    socket.on('hello-response', handleHelloResponse)
-    socket.on('room-test', handleRoomTest)
-
-    // socket.js uses autoConnect: false, so importing the socket does not
-    // connect automatically. React explicitly starts the connection here.
-    socket.connect()
-
-    // React runs this cleanup when App unmounts.
-    // First remove our listeners so they cannot be registered multiple times,
-    // then close the realtime connection.
-    return () => {
-      socket.off('connect', handleConnect)
-      socket.off('disconnect', handleDisconnect)
-      socket.off('hello-response', handleHelloResponse)
-      socket.off('room-test', handleRoomTest)
-      socket.disconnect()
-    }
-  }, [])
 
 
   return (
     <>
       <AuthProvider>
+        <SocketManager />
         <BrowserRouter>
           <Routes>
             <Route path='/' element={<PublicRoute><Landing /></PublicRoute>} />
