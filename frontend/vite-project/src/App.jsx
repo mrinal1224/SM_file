@@ -41,11 +41,21 @@ function App() {
       console.log('Server says:', message)
     }
 
+    // SOCKET.IO STEP 5: LISTEN FOR AN EVENT SENT TO OUR USER ROOM
+    //
+    // The browser does not decide which room it belongs to.
+    // The authenticated server joined this socket to the correct user room.
+    // If this event arrives, it proves targeted room delivery is working.
+    const handleRoomTest = (data) => {
+      console.log('User room event:', data.message)
+    }
+
     // Register listeners BEFORE calling connect().
     // This way we are already listening when the first connection succeeds.
     socket.on('connect', handleConnect)
     socket.on('disconnect', handleDisconnect)
     socket.on('hello-response', handleHelloResponse)
+    socket.on('room-test', handleRoomTest)
 
     // socket.js uses autoConnect: false, so importing the socket does not
     // connect automatically. React explicitly starts the connection here.
@@ -58,6 +68,7 @@ function App() {
       socket.off('connect', handleConnect)
       socket.off('disconnect', handleDisconnect)
       socket.off('hello-response', handleHelloResponse)
+      socket.off('room-test', handleRoomTest)
       socket.disconnect()
     }
   }, [])
