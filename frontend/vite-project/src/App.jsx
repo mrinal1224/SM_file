@@ -24,16 +24,28 @@ function App() {
     // has been established or disconnected.
     const handleConnect = () => {
       console.log('Socket connected:', socket.id)
+
+      // SOCKET.IO STEP 3: SEND OUR FIRST CUSTOM EVENT
+      //
+      // "hello" is our own event name. The second argument is the data
+      // that will travel from this browser to the server.
+      socket.emit('hello', 'Hello from the client!')
     }
 
     const handleDisconnect = () => {
       console.log('Socket disconnected')
     }
 
+    // Listen for the custom event that the server sends back.
+    const handleHelloResponse = (message) => {
+      console.log('Server says:', message)
+    }
+
     // Register listeners BEFORE calling connect().
     // This way we are already listening when the first connection succeeds.
     socket.on('connect', handleConnect)
     socket.on('disconnect', handleDisconnect)
+    socket.on('hello-response', handleHelloResponse)
 
     // socket.js uses autoConnect: false, so importing the socket does not
     // connect automatically. React explicitly starts the connection here.
@@ -45,6 +57,7 @@ function App() {
     return () => {
       socket.off('connect', handleConnect)
       socket.off('disconnect', handleDisconnect)
+      socket.off('hello-response', handleHelloResponse)
       socket.disconnect()
     }
   }, [])
