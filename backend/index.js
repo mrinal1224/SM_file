@@ -16,6 +16,8 @@ import reelRoutes from "./routes/reel.routes.js";
 import commentRoutes from "./routes/comment.routes.js";
 import storyRoutes from "./routes/story.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
+import notificationRoutes from "./routes/notification.routes.js";
+import { setIO } from "./socket.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +50,9 @@ const io = new Server(httpServer, {
     }
 });
 const port = 8084;
+
+// Make this Socket.IO server available to notification helpers/controllers.
+setIO(io);
 
 // SOCKET.IO STEP 4: AUTHENTICATE THE SOCKET DURING THE HANDSHAKE
 //
@@ -116,6 +121,7 @@ app.use("/posts", postRoutes);
 app.use("/reels", reelRoutes);
 app.use("/comments", commentRoutes);
 app.use("/stories", storyRoutes);
+app.use("/notifications", notificationRoutes);
 
 app.use(errorMiddleware);
 
