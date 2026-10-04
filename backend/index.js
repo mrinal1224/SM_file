@@ -123,6 +123,30 @@ io.on("connection", (socket) => {
     console.log("Socket connected:", socket.id);
     console.log("Authenticated socket user:", socket.user.username, socket.user._id.toString());
 
+    // SOCKET.IO STEP 5: PUT EVERY CONNECTION OF THIS USER IN ONE ROOM
+    //
+    // A user can have multiple socket connections at the same time:
+    // one from a laptop, another from a phone, or even multiple browser tabs.
+    // Every connection gets a different socket.id, but all of them belong to
+    // the same MongoDB user.
+    //
+    // Instead of manually storing all socket IDs, we create a room whose name
+    // is based on the authenticated user ID.
+    const userRoom = `user:${socket.user._id.toString()}`;
+
+    socket.join(userRoom);
+
+    console.log(`${socket.user.username} joined room: ${userRoom}`);
+
+    // Send a test event to the USER ROOM, not directly to this socket.
+    //
+    // io.to(room).emit(...) means every currently connected socket inside this
+    // room receives the event. Later this exact pattern will let us send a
+    // notification to one user across all of their connected devices/tabs.
+    io.to(userRoom).emit("room-test", {
+        message: `Welcome ${socket.user.username}. Your user room is working!`
+    });
+
     // SOCKET.IO STEP 3: RECEIVE OUR FIRST CUSTOM EVENT
     //
     // "hello" is not a built-in Socket.IO event. We chose this event name.
